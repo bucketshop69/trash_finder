@@ -1,34 +1,63 @@
 import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
+import GameCanvas from './game/GameCanvas'
+import GameMenu from './components/GameMenu'
+import GameLobby from './components/GameLobby'
+import GameHUD from './components/GameHUD'
 import './App.css'
 
+type GameState = 'menu' | 'lobby' | 'playing'
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [gameState, setGameState] = useState<GameState>('menu')
+  const [gameTime, setGameTime] = useState(0)
+
+  const handleStartGame = () => {
+    setGameState('playing')
+    setGameTime(0)
+    // Start game timer (will be managed by game logic later)
+  }
+
+  const handleBackToMenu = () => {
+    setGameState('menu')
+  }
+
+  const handleEnterLobby = () => {
+    setGameState('lobby')
+  }
+
+  const handleExitGame = () => {
+    setGameState('lobby')
+  }
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.tsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
+    <div className="App">
+      {gameState === 'menu' && (
+        <GameMenu onStartGame={handleEnterLobby} />
+      )}
+      
+      {gameState === 'lobby' && (
+        <GameLobby 
+          onStartGame={handleStartGame}
+          onBackToMenu={handleBackToMenu}
+        />
+      )}
+      
+      {gameState === 'playing' && (
+        <div className="relative">
+          <GameHUD
+            playerKeys={0}
+            opponentKeys={0}
+            gameTime={gameTime}
+            playerName="You"
+            opponentName="Opponent"
+            onExitGame={handleExitGame}
+          />
+          <div className="flex justify-center pt-16">
+            <GameCanvas />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }
 
