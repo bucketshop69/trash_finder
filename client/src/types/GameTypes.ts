@@ -41,6 +41,19 @@ export interface RoomState {
 }
 
 export interface MazeConfig {
+  rows: number;
+  cols: number;
+  roomWidth: number;
+  roomHeight: number;
+}
+
+export interface MazeData {
+  rooms: RoomState[];
+  doors: Door[];
+  keys: Key[];
+}
+
+export interface MazeGeneratorConfig {
   gridSize: { rows: number, cols: number };
   roomSize: { width: number, height: number };
   doorWidth: number;

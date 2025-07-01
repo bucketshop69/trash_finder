@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MazeGenerator } from '../utils/MazeGenerator';
-import type { RoomState, Door, Key, Player } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Player, MazeConfig, MazeData } from '../../types/GameTypes';
 
 export class MazeScene extends Phaser.Scene {
   private mazeGenerator!: MazeGenerator;
@@ -35,11 +35,21 @@ export class MazeScene extends Phaser.Scene {
   }
 
   create() {
-    console.log('MazeScene: Creating 2x2 maze');
+    console.log('MazeScene: Creating dynamic maze');
 
     // Initialize maze generator
     this.mazeGenerator = new MazeGenerator();
-    const mazeData = this.mazeGenerator.generateMaze();
+    
+    // Define maze configuration - just Room1 for simplicity
+    const mazeConfig: MazeConfig = {
+      rows: 1,
+      cols: 1,
+      roomWidth: 200,
+      roomHeight: 150
+    };
+
+    // Generate maze data using new method
+    const mazeData: MazeData = this.mazeGenerator.generate(mazeConfig);
 
     this.rooms = mazeData.rooms;
     this.doors = mazeData.doors;
@@ -160,20 +170,22 @@ export class MazeScene extends Phaser.Scene {
         graphics.fillStyle(0xe74c3c, 1);
       }
 
+      const doorWidth = 40; // Standard door width for new system
+      
       if (door.orientation === 'horizontal') {
         // Horizontal door
-        graphics.fillRect(door.position.x, door.position.y, this.mazeGenerator.getConfig().doorWidth, 20);
+        graphics.fillRect(door.position.x, door.position.y, doorWidth, 20);
       } else {
         // Vertical door
-        graphics.fillRect(door.position.x, door.position.y, 20, this.mazeGenerator.getConfig().doorWidth);
+        graphics.fillRect(door.position.x, door.position.y, 20, doorWidth);
       }
 
       // Door outline
       graphics.lineStyle(2, 0xffffff, 1);
       if (door.orientation === 'horizontal') {
-        graphics.strokeRect(door.position.x, door.position.y, this.mazeGenerator.getConfig().doorWidth, 20);
+        graphics.strokeRect(door.position.x, door.position.y, doorWidth, 20);
       } else {
-        graphics.strokeRect(door.position.x, door.position.y, 20, this.mazeGenerator.getConfig().doorWidth);
+        graphics.strokeRect(door.position.x, door.position.y, 20, doorWidth);
       }
 
       // Add door labels
@@ -232,7 +244,13 @@ export class MazeScene extends Phaser.Scene {
 
   private createPlayers() {
     // Create player 1 (blue circle) - controllable
-    const player1Pos = this.mazeGenerator.getSpawnPosition(0);
+    // Position outside the room entrance
+    const firstRoom = this.rooms[0];
+    const player1Pos = {
+      x: firstRoom.position.x - 50,
+      y: firstRoom.position.y + firstRoom.position.height / 2
+    };
+    
     this.player1 = this.add.graphics();
     this.player1.fillStyle(0x3498db, 1); // Blue
     this.player1.fillCircle(0, 0, 15);
@@ -244,22 +262,6 @@ export class MazeScene extends Phaser.Scene {
     this.add.text(player1Pos.x, player1Pos.y - 35, 'YOU', {
       fontSize: '14px',
       color: '#3498db',
-      fontFamily: 'Arial',
-      fontStyle: 'bold'
-    }).setOrigin(0.5);
-
-    // Create player 2 (red circle) - static for now
-    const player2Pos = this.mazeGenerator.getSpawnPosition(1);
-    const player2Graphics = this.add.graphics();
-    player2Graphics.fillStyle(0xe74c3c, 1); // Red
-    player2Graphics.fillCircle(player2Pos.x, player2Pos.y, 15);
-    player2Graphics.lineStyle(3, 0xffffff, 1);
-    player2Graphics.strokeCircle(player2Pos.x, player2Pos.y, 15);
-
-    // Player 2 label
-    this.add.text(player2Pos.x, player2Pos.y - 35, 'OPPONENT', {
-      fontSize: '14px',
-      color: '#e74c3c',
       fontFamily: 'Arial',
       fontStyle: 'bold'
     }).setOrigin(0.5);
@@ -417,10 +419,12 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private getDoorBounds(door: Door, padding: number = 0) {
+    const doorWidth = 40; // Standard door width for new system
+    
     if (door.orientation === 'horizontal') {
       return {
         left: door.position.x - padding,
-        right: door.position.x + this.mazeGenerator.getConfig().doorWidth + padding,
+        right: door.position.x + doorWidth + padding,
         top: door.position.y - padding,
         bottom: door.position.y + 20 + padding
       };
@@ -429,7 +433,7 @@ export class MazeScene extends Phaser.Scene {
         left: door.position.x - padding,
         right: door.position.x + 20 + padding,
         top: door.position.y - padding,
-        bottom: door.position.y + this.mazeGenerator.getConfig().doorWidth + padding
+        bottom: door.position.y + doorWidth + padding
       };
     }
   }
@@ -619,18 +623,20 @@ export class MazeScene extends Phaser.Scene {
       doorGraphics.clear();
       doorGraphics.fillStyle(0x2ecc71, 1);
 
+      const doorWidth = 40; // Standard door width for new system
+      
       if (door.orientation === 'horizontal') {
-        doorGraphics.fillRect(door.position.x, door.position.y, this.mazeGenerator.getConfig().doorWidth, 20);
+        doorGraphics.fillRect(door.position.x, door.position.y, doorWidth, 20);
       } else {
-        doorGraphics.fillRect(door.position.x, door.position.y, 20, this.mazeGenerator.getConfig().doorWidth);
+        doorGraphics.fillRect(door.position.x, door.position.y, 20, doorWidth);
       }
 
       // Add door outline
       doorGraphics.lineStyle(2, 0xffffff, 1);
       if (door.orientation === 'horizontal') {
-        doorGraphics.strokeRect(door.position.x, door.position.y, this.mazeGenerator.getConfig().doorWidth, 20);
+        doorGraphics.strokeRect(door.position.x, door.position.y, doorWidth, 20);
       } else {
-        doorGraphics.strokeRect(door.position.x, door.position.y, 20, this.mazeGenerator.getConfig().doorWidth);
+        doorGraphics.strokeRect(door.position.x, door.position.y, 20, doorWidth);
       }
 
       // Show unlock feedback
