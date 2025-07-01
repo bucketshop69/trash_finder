@@ -1,0 +1,25 @@
+{
+  "name": "gorbagana-game-contracts",
+  "version": "1.0.0",
+  "description": "Smart contracts for Gorbagana Trash Finder game",
+  "main": "lib/index.js",
+  "scripts": {
+    "build": "anchor build",
+    "test": "anchor test",
+    "deploy": "anchor deploy",
+    "lint": "cargo clippy -- -D warnings"
+  },
+  "keywords": ["gorbagana", "solana", "anchor", "smart-contracts"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.29.0",
+    "@solana/web3.js": "^1.87.6"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.5",
+    "typescript": "^5.3.3",
+    "chai": "^4.4.1",
+    "mocha": "^10.2.0"
+  }
+}
