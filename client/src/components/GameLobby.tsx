@@ -12,11 +12,7 @@ const GameLobby = ({ onStartGame, onBackToMenu }: GameLobbyProps) => {
   const [isSearching, setIsSearching] = useState(false);
 
   const handleFindGame = () => {
-    if (!walletAddress) {
-      alert('Please connect your wallet first!');
-      return;
-    }
-    
+    // Skip wallet check for now - go straight to game
     setIsSearching(true);
     
     // Simulate finding opponent
@@ -59,7 +55,7 @@ const GameLobby = ({ onStartGame, onBackToMenu }: GameLobbyProps) => {
               <h2 className="text-xl font-semibold mb-4">Game Actions</h2>
               <button
                 onClick={handleFindGame}
-                disabled={isSearching || !walletAddress}
+                disabled={isSearching}
                 className="w-full bg-gorbagana-green hover:bg-gorbagana-light disabled:bg-gray-600 px-6 py-4 rounded-lg font-semibold text-lg transition-colors flex items-center justify-center space-x-2"
               >
                 {isSearching ? (

@@ -16,35 +16,39 @@
 - [x] Set up TypeScript configuration
 - [x] Create basic folder README files
 
-### Sprint 1.2: Frontend Base Setup
-- [ ] Set up React + Vite development environment
-- [ ] Install and configure Phaser.js
-- [ ] Create basic game canvas
-- [ ] Set up Tailwind CSS
-- [ ] Create basic UI components
+### Sprint 1.2: Frontend Base Setup ✅
+- [x] Set up React + Vite development environment
+- [x] Install and configure Phaser.js
+- [x] Create basic game canvas
+- [x] Set up Tailwind CSS
+- [x] Create basic UI components
 
-### Sprint 1.3: Backend Base Setup
-- [ ] Set up Node.js + Express server
-- [ ] Install and configure Socket.io
-- [ ] Create basic multiplayer room system
-- [ ] Set up Redis for session management
-- [ ] Create API endpoints structure
+### Sprint 1.3: Backend Base Setup ✅
+- [x] Set up Node.js + Express server
+- [x] Install and configure Socket.io
+- [x] Create basic multiplayer room system
+- [x] Set up Redis for session management
+- [x] Create API endpoints structure
 
 ---
 
 ## Phase 2: Core Game Development
 
-### Sprint 2.1: Game World Creation
-- [ ] Design maze layout system
-- [ ] Create room generation logic
-- [ ] Implement player spawn points
-- [ ] Add basic 2D rendering with Phaser
+### Sprint 2.1: Game World Creation (2x2 Maze) ✅
+- [x] Implement 2x2 maze layout (4 rooms + center)
+- [x] Create room generation and coordinate system
+- [x] Add basic 2D rendering with Phaser
+- [x] Implement player spawn points and movement
 
-### Sprint 2.2: Player Movement & Controls
-- [ ] Implement player movement mechanics
-- [ ] Add collision detection
-- [ ] Create smooth camera following
-- [ ] Add keyboard/touch controls
+### Sprint 2.2: Room Transitions & Collision 🚨 BLOCKED
+**Current Issue**: Collision detection preventing room entry
+- [x] Basic collision detection implemented
+- [x] Player movement from spawn area working
+- [ ] **BLOCKING**: Cannot enter rooms - collision too restrictive
+- [ ] **NEEDED**: Door-based entry system with clear labels
+- [ ] **NEEDED**: Simplified collision using door boundaries only
+- [ ] Key collection mechanics (implemented but not testable)
+- [ ] Door unlocking system (implemented but not testable)
 
 ### Sprint 2.3: Multiplayer Synchronization
 - [ ] Implement real-time player position sync
@@ -138,6 +142,12 @@
 
 ## Completed Sprints ✅
 - **Sprint 1.1: Project Structure Setup** - Complete monorepo setup with all modules
+- **Sprint 1.2: Frontend Base Setup** - React + Phaser + Tailwind + UI components
+- **Sprint 1.3: Backend Base Setup** - Node.js + Socket.io + Redis + API structure  
+- **Sprint 2.1: Game World Creation** - 2x2 maze layout + rendering + movement
 
-## Current Active Sprint
-**Sprint 1.2: Frontend Base Setup** - See current_sprint.md for details
+## Current Active Sprint - BLOCKED 🚨
+**Sprint 2.2: Room Transitions & Collision** - Door-based entry system needed
+
+**Problem**: Overly complex collision detection preventing room entry
+**Solution**: Simplify to door-based entry with clear visual labels

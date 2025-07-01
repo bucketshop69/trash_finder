@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
-import { GameScene } from './scenes/GameScene';
+import { MazeScene } from './scenes/MazeScene';
 
 const GameCanvas = () => {
   const gameRef = useRef<HTMLDivElement>(null);
@@ -8,13 +8,13 @@ const GameCanvas = () => {
 
   useEffect(() => {
     if (gameRef.current && !phaserGameRef.current) {
-      // Phaser game configuration
+      // Phaser game configuration for 2x2 maze
       const config: Phaser.Types.Core.GameConfig = {
         type: Phaser.AUTO,
-        width: 1200,
-        height: 800,
+        width: 800,
+        height: 600,
         parent: gameRef.current,
-        backgroundColor: '#1a4a2e',
+        backgroundColor: '#2a2a2a',
         physics: {
           default: 'arcade',
           arcade: {
@@ -22,7 +22,7 @@ const GameCanvas = () => {
             debug: false
           }
         },
-        scene: [GameScene],
+        scene: [MazeScene],
         scale: {
           mode: Phaser.Scale.NONE,
           autoCenter: Phaser.Scale.NO_CENTER
@@ -31,7 +31,7 @@ const GameCanvas = () => {
 
       // Create Phaser game instance
       phaserGameRef.current = new Phaser.Game(config);
-      console.log('Phaser game initialized');
+      console.log('Phaser 2x2 maze game initialized');
     }
 
     // Cleanup function
