@@ -39,11 +39,11 @@ export class MazeScene extends Phaser.Scene {
 
     // Initialize maze generator
     this.mazeGenerator = new MazeGenerator();
-    
+
     // Define maze configuration - just Room1 for simplicity
     const mazeConfig: MazeConfig = {
-      rows: 1,
-      cols: 1,
+      rows: 3,
+      cols: 3,
       roomWidth: 200,
       roomHeight: 150
     };
@@ -170,8 +170,8 @@ export class MazeScene extends Phaser.Scene {
         graphics.fillStyle(0xe74c3c, 1);
       }
 
-      const doorWidth = 40; // Standard door width for new system
-      
+      const doorWidth = 20; // Standard door width for new system
+
       if (door.orientation === 'horizontal') {
         // Horizontal door
         graphics.fillRect(door.position.x, door.position.y, doorWidth, 20);
@@ -250,7 +250,7 @@ export class MazeScene extends Phaser.Scene {
       x: firstRoom.position.x - 50,
       y: firstRoom.position.y + firstRoom.position.height / 2
     };
-    
+
     this.player1 = this.add.graphics();
     this.player1.fillStyle(0x3498db, 1); // Blue
     this.player1.fillCircle(0, 0, 15);
@@ -419,8 +419,8 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private getDoorBounds(door: Door, padding: number = 0) {
-    const doorWidth = 40; // Standard door width for new system
-    
+    const doorWidth = 20; // Standard door width for new system
+
     if (door.orientation === 'horizontal') {
       return {
         left: door.position.x - padding,
@@ -623,8 +623,8 @@ export class MazeScene extends Phaser.Scene {
       doorGraphics.clear();
       doorGraphics.fillStyle(0x2ecc71, 1);
 
-      const doorWidth = 40; // Standard door width for new system
-      
+      const doorWidth = 20; // Standard door width for new system
+
       if (door.orientation === 'horizontal') {
         doorGraphics.fillRect(door.position.x, door.position.y, doorWidth, 20);
       } else {

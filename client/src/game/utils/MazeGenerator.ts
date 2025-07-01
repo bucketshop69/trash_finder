@@ -37,7 +37,7 @@ export class MazeGenerator {
 
     // Only Room1 for testing grid system
     const room1Position = this.calculateRoom1Position();
-    
+
     const room1: RoomState = {
       id: 'room1',
       position: room1Position,
@@ -56,7 +56,7 @@ export class MazeGenerator {
     // Position Room1 in center-ish of screen for testing
     const x = 250; // Centered horizontally
     const y = 200; // Centered vertically
-    
+
     return {
       x,
       y,
@@ -70,12 +70,12 @@ export class MazeGenerator {
 
     // Only entrance door to Room1 for testing
     const room1Position = this.calculateRoom1Position();
-    
+
     // Entrance door OUTSIDE Room1's left wall - invisible door
     const entranceDoor: Door = {
-      id: 'door_entrance_room1', 
+      id: 'door_entrance_room1',
       type: 'open',
-      position: { 
+      position: {
         x: room1Position.x - 30,  // OUTSIDE the left wall of Room1
         y: room1Position.y + (2 * this.internalConfig.gridCellSize.height)  // Middle of left wall
       },
@@ -93,11 +93,11 @@ export class MazeGenerator {
 
     // Only one key in Room1 for testing
     const room1Position = this.calculateRoom1Position();
-    
+
     // Place key at grid position (4,4) - center of room1
     const key: Key = {
       id: 'key_room1',
-      position: { 
+      position: {
         x: room1Position.x + (4 * this.internalConfig.gridCellSize.width) + 11,  // Grid col 4 + center offset
         y: room1Position.y + (4 * this.internalConfig.gridCellSize.height) + 8   // Grid row 4 + center offset
       },
@@ -125,11 +125,11 @@ export class MazeGenerator {
   public getSpawnPosition(playerIndex: number): Position {
     // Spawn at grid (1,1) outside Room1's left side
     const room1Position = this.calculateRoom1Position();
-    
+
     // Grid (1,1) = 1 cell from room1's left edge, 1 cell down from room1's top
     const spawnX = room1Position.x - (2 * this.internalConfig.gridCellSize.width);  // 2 cells left of room1
     const spawnY = room1Position.y + (1 * this.internalConfig.gridCellSize.height); // 1 cell down from room1 top
-    
+
     return { x: spawnX, y: spawnY };
   }
 
@@ -140,7 +140,7 @@ export class MazeGenerator {
   // New dynamic generation methods
   private createRoomsFromConfig(config: MazeConfig): RoomState[] {
     const rooms: RoomState[] = [];
-    
+
     for (let row = 0; row < config.rows; row++) {
       for (let col = 0; col < config.cols; col++) {
         const roomId = `room_${row}_${col}`;
@@ -150,7 +150,7 @@ export class MazeGenerator {
           width: config.roomWidth,
           height: config.roomHeight
         };
-        
+
         const room: RoomState = {
           id: roomId,
           position,
@@ -160,17 +160,17 @@ export class MazeGenerator {
           playerOccupancy: [],
           doors: []
         };
-        
+
         rooms.push(room);
       }
     }
-    
+
     return rooms;
   }
 
   private createDoorsFromConfig(config: MazeConfig, rooms: RoomState[]): Door[] {
     const doors: Door[] = [];
-    
+
     // For single room (1x1), create entrance door from spawn area
     if (config.rows === 1 && config.cols === 1) {
       const room = rooms[0];
@@ -188,7 +188,7 @@ export class MazeGenerator {
       doors.push(entranceDoor);
       return doors;
     }
-    
+
     // For multi-room configurations, create connecting doors
     for (let row = 0; row < config.rows; row++) {
       for (let col = 0; col < config.cols; col++) {
@@ -208,7 +208,7 @@ export class MazeGenerator {
           };
           doors.push(door);
         }
-        
+
         // Create vertical doors (connecting rooms vertically)
         if (row < config.rows - 1) {
           const doorId = `door_${row}_${col}_v`;
@@ -227,13 +227,13 @@ export class MazeGenerator {
         }
       }
     }
-    
+
     return doors;
   }
 
   private createKeysFromConfig(config: MazeConfig, rooms: RoomState[]): Key[] {
     const keys: Key[] = [];
-    
+
     rooms.forEach(room => {
       if (room.hasKey && room.keyId) {
         const key: Key = {
@@ -249,7 +249,7 @@ export class MazeGenerator {
         keys.push(key);
       }
     });
-    
+
     return keys;
   }
 }
