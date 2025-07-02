@@ -130,15 +130,37 @@ export class MazeGenerator {
     };
   }
 
-  public getSpawnPosition(playerIndex: number): Position {
-    // Spawn at grid (1,1) outside Room1's left side
-    const room1Position = this.calculateRoom1Position();
+  public getSpawnPosition(playerIndex: number, config?: MazeConfig): Position {
+    // For single room mode (backward compatibility)
+    if (!config) {
+      const room1Position = this.calculateRoom1Position();
+      const spawnX = room1Position.x - (2 * this.internalConfig.gridCellSize.width);
+      const spawnY = room1Position.y + (1 * this.internalConfig.gridCellSize.height);
+      return { x: spawnX, y: spawnY };
+    }
 
-    // Grid (1,1) = 1 cell from room1's left edge, 1 cell down from room1's top
-    const spawnX = room1Position.x - (2 * this.internalConfig.gridCellSize.width);  // 2 cells left of room1
-    const spawnY = room1Position.y + (1 * this.internalConfig.gridCellSize.height); // 1 cell down from room1 top
-
-    return { x: spawnX, y: spawnY };
+    // For multi-room mode with two players
+    if (playerIndex === 0) {
+      // Player 1: Spawn outside room_0_0 (top-left)
+      const room00Position = {
+        x: 0 * config.roomWidth + 100,
+        y: 0 * config.roomHeight + 100
+      };
+      return {
+        x: room00Position.x - 50, // Left of room_0_0
+        y: room00Position.y + config.roomHeight / 2
+      };
+    } else {
+      // Player 2: Spawn outside room_2_2 (bottom-right)
+      const room22Position = {
+        x: 2 * config.roomWidth + 100,
+        y: 2 * config.roomHeight + 100
+      };
+      return {
+        x: room22Position.x + config.roomWidth + 40, // Closer to door entrance
+        y: room22Position.y + config.roomHeight / 2
+      };
+    }
   }
 
   public getConfig(): MazeGeneratorConfig {
@@ -199,21 +221,41 @@ export class MazeGenerator {
       return doors;
     }
 
-    // Create entrance door - ONLY to ROOM_0_0
-    const entranceRoom = rooms.find(r => r.id === 'room_0_0');
-    if (entranceRoom) {
-      const entranceDoor: Door = {
-        id: 'door_entrance_spawn',
+    // Create entrance doors for both players
+    // Player 1 entrance to ROOM_0_0 (top-left)
+    const entranceRoom1 = rooms.find(r => r.id === 'room_0_0');
+    if (entranceRoom1) {
+      const entranceDoor1: Door = {
+        id: 'door_entrance_player1',
         type: 'open',
         position: {
-          x: entranceRoom.position.x - 25, // Outside the left wall of ROOM_0_0
-          y: entranceRoom.position.y + entranceRoom.position.height / 2
+          x: entranceRoom1.position.x - 25, // Outside the left wall of ROOM_0_0
+          y: entranceRoom1.position.y + entranceRoom1.position.height / 2
         },
         orientation: 'vertical',
         isOpen: true,
-        connectsRooms: ['spawn', 'room_0_0']
+        connectsRooms: ['spawn_p1', 'room_0_0']
       };
-      doors.push(entranceDoor);
+      doors.push(entranceDoor1);
+    }
+
+    // Player 2 entrance to ROOM_2_2 (bottom-right)
+    const entranceRoom2 = rooms.find(r => r.id === 'room_2_2');
+    if (entranceRoom2) {
+      const entranceDoor2: Door = {
+        id: 'door_entrance_player2',
+        type: 'open',
+        position: {
+          x: entranceRoom2.position.x + entranceRoom2.position.width + 15, // Closer to the right wall of ROOM_2_2
+          y: entranceRoom2.position.y + entranceRoom2.position.height / 2 - 10 // Center vertically
+        },
+        orientation: 'vertical',
+        isOpen: true,
+        connectsRooms: ['spawn_p2', 'room_2_2']
+      };
+      doors.push(entranceDoor2);
+    } else {
+      console.error('ERROR: Room 2_2 not found for Player 2 door!');
     }
 
     // Create internal connecting doors between rooms only

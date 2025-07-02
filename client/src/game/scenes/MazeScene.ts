@@ -3,6 +3,7 @@ import { MazeGenerator } from '../utils/MazeGenerator';
 import type { RoomState, Door, Key, Treasure, Player, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
 import { ObjectType, LightingState } from '../../types/GameTypes';
 import { GAME_CONFIG, PLAYER_IDS } from '../config/GameConstants';
+import { socketManager } from '../../services/SocketManager';
 
 export class MazeScene extends Phaser.Scene {
   private mazeGenerator!: MazeGenerator;
@@ -32,9 +33,12 @@ export class MazeScene extends Phaser.Scene {
 
   // Player movement
   private player1!: Phaser.GameObjects.Graphics;
+  private player2!: Phaser.GameObjects.Graphics;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: any;
+  private arrowKeys!: any;
   private spacebar!: Phaser.Input.Keyboard.Key;
+  private enterKey!: Phaser.Input.Keyboard.Key;
   private playerSpeed: number = GAME_CONFIG.PLAYER_SPEED;
 
   // Flashlight system
@@ -43,8 +47,17 @@ export class MazeScene extends Phaser.Scene {
   private playerDirection: { x: number, y: number } = { x: 1, y: 0 }; // Default facing right
   private lastMovement: { x: number, y: number } = { x: 0, y: 0 };
 
+  // Network multiplayer state
+  private isNetworked: boolean = false;
+  private localPlayerId: string | null = null;
+  private remotePlayers: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private lastSentPosition: { x: number, y: number } = { x: 0, y: 0 };
+  private positionSendThreshold: number = 5; // Only send if moved > 5 pixels
+
   constructor() {
     super({ key: 'MazeScene' });
+    // @ts-ignore - Expose for debugging
+    window.gameScene = this;
   }
 
   preload() {
@@ -94,15 +107,15 @@ export class MazeScene extends Phaser.Scene {
     this.createFlashlight();
 
     // Add title
-    this.add.text(400, 20, 'Gorbagana Trash Finder - 2x2 Maze', {
+    this.add.text(400, 20, 'Gorbagana Trash Finder - 3x3 Multiplayer Maze', {
       fontSize: '24px',
       color: '#ffffff',
       fontFamily: 'Arial'
     }).setOrigin(0.5);
 
     // Add instructions
-    this.add.text(400, 550, 'WASD to move | SPACE to collect keys | L to cycle lighting | F for flashlight | Reach center treasure!', {
-      fontSize: '14px',
+    this.add.text(400, 550, 'P1: WASD + SPACE | P2: ARROWS + ENTER | L: lighting | F: flashlight | First to collect 3 keys wins!', {
+      fontSize: '12px',
       color: '#cccccc',
       fontFamily: 'Arial'
     }).setOrigin(0.5);
@@ -112,6 +125,9 @@ export class MazeScene extends Phaser.Scene {
 
     // Initialize key counter
     this.updateKeyCounter();
+
+    // Set up network multiplayer
+    this.setupNetworking();
 
     // DEBUG: Final validation
     this.debugGameState();
@@ -124,6 +140,11 @@ export class MazeScene extends Phaser.Scene {
     console.log('Keys:', this.keys.length, this.keys);
     console.log('Treasure:', this.treasure);
     console.log('Objects:', this.objects.length, this.objects);
+
+    // Debug door positions and status
+    this.doors.forEach(door => {
+      console.log(`Door ${door.id}: position (${door.position.x}, ${door.position.y}), isOpen: ${door.isOpen}, connects: ${door.connectsRooms.join(' <-> ')}`);
+    });
 
     // Validate keys are positioned correctly
     this.keys.forEach(key => {
@@ -827,14 +848,18 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private createPlayers() {
-    // Create player 1 (blue circle) - controllable
-    // Position outside the room entrance
-    const firstRoom = this.rooms[0];
-    const player1Pos = {
-      x: firstRoom.position.x - 50,
-      y: firstRoom.position.y + firstRoom.position.height / 2
+    // Get spawn positions for both players
+    const mazeConfig = {
+      rows: 3,
+      cols: 3,
+      roomWidth: 200,
+      roomHeight: 150
     };
+    
+    const player1Pos = this.mazeGenerator.getSpawnPosition(0, mazeConfig);
+    const player2Pos = this.mazeGenerator.getSpawnPosition(1, mazeConfig);
 
+    // Create Player 1 (blue circle) - WASD controls
     this.player1 = this.add.graphics();
     this.player1.fillStyle(0x3498db, 1); // Blue
     this.player1.fillCircle(0, 0, 15);
@@ -843,12 +868,33 @@ export class MazeScene extends Phaser.Scene {
     this.player1.setPosition(player1Pos.x, player1Pos.y);
 
     // Player 1 label
-    this.add.text(player1Pos.x, player1Pos.y - 35, 'YOU', {
-      fontSize: '14px',
+    this.add.text(player1Pos.x, player1Pos.y - 35, 'PLAYER 1\n(WASD)', {
+      fontSize: '12px',
       color: '#3498db',
       fontFamily: 'Arial',
-      fontStyle: 'bold'
+      fontStyle: 'bold',
+      align: 'center'
     }).setOrigin(0.5);
+
+    // Create Player 2 (red circle) - Arrow keys controls
+    this.player2 = this.add.graphics();
+    this.player2.fillStyle(0xe74c3c, 1); // Red
+    this.player2.fillCircle(0, 0, 15);
+    this.player2.lineStyle(3, 0xffffff, 1);
+    this.player2.strokeCircle(0, 0, 15);
+    this.player2.setPosition(player2Pos.x, player2Pos.y);
+
+    // Player 2 label
+    this.add.text(player2Pos.x, player2Pos.y - 35, 'PLAYER 2\n(ARROWS)', {
+      fontSize: '12px',
+      color: '#e74c3c',
+      fontFamily: 'Arial',
+      fontStyle: 'bold',
+      align: 'center'
+    }).setOrigin(0.5);
+
+    console.log(`Player 1 spawned at: ${player1Pos.x}, ${player1Pos.y}`);
+    console.log(`Player 2 spawned at: ${player2Pos.x}, ${player2Pos.y}`);
   }
 
   private createFlashlight() {
@@ -897,14 +943,17 @@ export class MazeScene extends Phaser.Scene {
 
 
   private setupControls() {
-    // Create cursor keys (arrow keys)
+    // Create cursor keys (arrow keys) - Player 2
     this.cursors = this.input.keyboard!.createCursorKeys();
 
-    // Create WASD keys
+    // Create WASD keys - Player 1
     this.wasdKeys = this.input.keyboard!.addKeys('W,S,A,D');
 
-    // Add spacebar for key collection
+    // Add spacebar for Player 1 key collection
     this.spacebar = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
+    
+    // Add Enter key for Player 2 key collection
+    this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
     
     // Add L key for cycling lighting states (for testing)
     const lKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.L);
@@ -930,7 +979,17 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private handlePlayerMovement() {
-    if (!this.player1 || this.isGameEnded) return;
+    if ((!this.player1 && !this.player2) || this.isGameEnded) return;
+    
+    // Handle Player 1 movement (WASD)
+    this.handlePlayer1Movement();
+    
+    // Handle Player 2 movement (Arrow keys)
+    this.handlePlayer2Movement();
+  }
+
+  private handlePlayer1Movement() {
+    if (!this.player1) return;
 
     const speed = this.playerSpeed * (1 / 60); // 60 FPS movement
 
@@ -938,16 +997,16 @@ export class MazeScene extends Phaser.Scene {
     let velocityY = 0;
 
 
-    // Check WASD keys
-    if (this.wasdKeys.A.isDown || this.cursors.left.isDown) {
+    // Check WASD keys only for Player 1
+    if (this.wasdKeys.A.isDown) {
       velocityX = -speed;
-    } else if (this.wasdKeys.D.isDown || this.cursors.right.isDown) {
+    } else if (this.wasdKeys.D.isDown) {
       velocityX = speed;
     }
 
-    if (this.wasdKeys.W.isDown || this.cursors.up.isDown) {
+    if (this.wasdKeys.W.isDown) {
       velocityY = -speed;
-    } else if (this.wasdKeys.S.isDown || this.cursors.down.isDown) {
+    } else if (this.wasdKeys.S.isDown) {
       velocityY = speed;
     }
 
@@ -959,17 +1018,55 @@ export class MazeScene extends Phaser.Scene {
       const newY = currentY + velocityY;
 
       // Check if the new position is valid (no collision)
-      if (this.isValidPosition(newX, newY)) {
+      if (this.isValidPosition(newX, newY, this.player1)) {
         this.player1.setPosition(newX, newY);
         
         // Update player direction for flashlight
         this.updatePlayerDirection(velocityX, velocityY);
         this.lastMovement = { x: velocityX, y: velocityY };
+        
+        // Send position to server if networked
+        this.sendPlayerPositionIfNeeded(newX, newY);
       }
     }
   }
 
-  private isValidPosition(x: number, y: number): boolean {
+  private handlePlayer2Movement() {
+    if (!this.player2) return;
+
+    const speed = this.playerSpeed * (1 / 60); // 60 FPS movement
+
+    let velocityX = 0;
+    let velocityY = 0;
+
+    // Check Arrow keys only for Player 2
+    if (this.cursors.left.isDown) {
+      velocityX = -speed;
+    } else if (this.cursors.right.isDown) {
+      velocityX = speed;
+    }
+
+    if (this.cursors.up.isDown) {
+      velocityY = -speed;
+    } else if (this.cursors.down.isDown) {
+      velocityY = speed;
+    }
+
+    // Apply movement with collision detection
+    if (velocityX !== 0 || velocityY !== 0) {
+      const currentX = this.player2.x;
+      const currentY = this.player2.y;
+      const newX = currentX + velocityX;
+      const newY = currentY + velocityY;
+
+      // Check if the new position is valid (no collision)
+      if (this.isValidPosition(newX, newY, this.player2)) {
+        this.player2.setPosition(newX, newY);
+      }
+    }
+  }
+
+  private isValidPosition(x: number, y: number, player?: Phaser.GameObjects.Graphics): boolean {
     const playerRadius = 15;
 
     // 1. Screen boundary check
@@ -979,7 +1076,7 @@ export class MazeScene extends Phaser.Scene {
     }
 
     // 2. Check room wall collision - can only enter through door
-    if (this.isCollidingWithRoomWalls(x, y, playerRadius)) {
+    if (this.isCollidingWithRoomWalls(x, y, playerRadius, player)) {
       return false;
     }
 
@@ -1005,11 +1102,14 @@ export class MazeScene extends Phaser.Scene {
     return null;
   }
 
-  private isCollidingWithRoomWalls(x: number, y: number, radius: number): boolean {
+  private isCollidingWithRoomWalls(x: number, y: number, radius: number, player?: Phaser.GameObjects.Graphics): boolean {
     const playerBounds = { left: x - radius, right: x + radius, top: y - radius, bottom: y + radius };
 
-    const currentRoom = this.getRoomAtPosition(this.player1.x, this.player1.y);
+    // Use the specific player's current position, default to player1 for backward compatibility
+    const currentPlayer = player || this.player1;
+    const currentRoom = this.getRoomAtPosition(currentPlayer.x, currentPlayer.y);
     const nextRoom = this.getRoomAtPosition(x, y);
+
 
     // If the player is not changing rooms, there is no wall collision.
     // This covers movement within a single room, or movement completely outside of any room.
@@ -1025,6 +1125,7 @@ export class MazeScene extends Phaser.Scene {
       if (!door.isOpen) return false;
 
       const doorBounds = this.getDoorBounds(door, 5); // Padding for smoother entry
+
 
       // Check for overlap between the player's next position and the door's bounds.
       return !(playerBounds.right < doorBounds.left ||
@@ -1174,22 +1275,33 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private updateKeyInteraction() {
-    if (!this.player1 || this.isGameEnded) return;
+    if ((!this.player1 && !this.player2) || this.isGameEnded) return;
 
-    const playerX = this.player1.x;
-    const playerY = this.player1.y;
     const interactionDistance = GAME_CONFIG.KEY_INTERACTION_DISTANCE;
 
     let closestKey: Key | null = null;
     let minDistance = Infinity;
 
-    // Find the closest uncollected key
+    // Check proximity for both players
+    const players = [
+      { player: this.player1, key: this.spacebar, name: 'Player1' },
+      { player: this.player2, key: this.enterKey, name: 'Player2' }
+    ].filter(p => p.player); // Only include existing players
+
+    // Find the closest uncollected key to any player
     for (const key of this.keys) {
       if (!this.collectedKeys.has(key.id)) {
-        const distance = Phaser.Math.Distance.Between(playerX, playerY, key.position.x, key.position.y);
-        if (distance < minDistance) {
-          minDistance = distance;
-          closestKey = key;
+        for (const playerData of players) {
+          const distance = Phaser.Math.Distance.Between(
+            playerData.player.x, 
+            playerData.player.y, 
+            key.position.x, 
+            key.position.y
+          );
+          if (distance < minDistance) {
+            minDistance = distance;
+            closestKey = key;
+          }
         }
       }
     }
@@ -1204,11 +1316,12 @@ export class MazeScene extends Phaser.Scene {
       this.unhighlightKey();
     }
 
-    // Check for spacebar press to collect the highlighted key
-    if (this.highlightedKey && Phaser.Input.Keyboard.JustDown(this.spacebar)) {
-      console.log("space clicked", this.highlightedKey.id);
+    // Check for spacebar (Player 1) or enter (Player 2) press to collect the highlighted key
+    if (this.highlightedKey && (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey))) {
+      const keyPressed = Phaser.Input.Keyboard.JustDown(this.spacebar) ? "SPACE" : "ENTER";
+      console.log(`${keyPressed} pressed`, this.highlightedKey.id);
 
-      this.collectKey(this.highlightedKey.id);
+      this.attemptKeyCollection(this.highlightedKey);
     }
   }
 
@@ -1298,24 +1411,32 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private updateTreasureInteraction() {
-    if (!this.player1 || !this.treasure || this.treasure.claimed || this.isGameEnded) return;
+    if ((!this.player1 && !this.player2) || !this.treasure || this.treasure.claimed || this.isGameEnded) return;
 
-    const playerX = this.player1.x;
-    const playerY = this.player1.y;
     const interactionDistance = GAME_CONFIG.TREASURE_INTERACTION_DISTANCE;
 
-    // Calculate distance to treasure
-    const distance = Phaser.Math.Distance.Between(
-      playerX, playerY, 
-      this.treasure.position.x, this.treasure.position.y
-    );
+    // Check if either player is close enough to treasure
+    const players = [this.player1, this.player2].filter(p => p);
+    let isAnyPlayerNear = false;
 
-    // Check if player is close enough to treasure
-    if (distance <= interactionDistance) {
+    for (const player of players) {
+      const distance = Phaser.Math.Distance.Between(
+        player.x, player.y, 
+        this.treasure.position.x, this.treasure.position.y
+      );
+
+      if (distance <= interactionDistance) {
+        isAnyPlayerNear = true;
+        break;
+      }
+    }
+
+    // Check if any player is close enough to treasure
+    if (isAnyPlayerNear) {
       this.showTreasureInteractionPrompt();
       
-      // Check for spacebar press to claim treasure
-      if (Phaser.Input.Keyboard.JustDown(this.spacebar)) {
+      // Check for spacebar (Player 1) or enter (Player 2) press to claim treasure
+      if (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         this.attemptTreasureClaim();
       }
     } else {
@@ -1354,16 +1475,27 @@ export class MazeScene extends Phaser.Scene {
   private attemptTreasureClaim() {
     console.log(`Attempting to claim treasure. Player has ${this.collectedKeys.size} keys, needs ${this.treasure.keysRequired}`);
     
-    // Check if player has enough keys
-    if (this.collectedKeys.size >= this.treasure.keysRequired) {
-      this.claimTreasure();
+    if (this.isNetworked && socketManager.getConnectionStatus()) {
+      // Networked mode: Send to server for validation
+      console.log('🌐 Sending treasure claim to server');
+      const playerPos = this.player1 ? { x: this.player1.x, y: this.player1.y } : { x: 0, y: 0 };
+      socketManager.sendTreasureClaim({
+        position: playerPos,
+        keysCollected: this.collectedKeys.size
+      });
     } else {
-      this.showInsufficientKeysFeedback();
+      // Local mode: Handle immediately
+      console.log('🏠 Local treasure claim attempt');
+      if (this.collectedKeys.size >= this.treasure.keysRequired) {
+        this.claimTreasureLocally();
+      } else {
+        this.showInsufficientKeysFeedback();
+      }
     }
   }
 
-  private claimTreasure() {
-    console.log('Treasure claimed! Player wins!');
+  private claimTreasureLocally() {
+    console.log('Treasure claimed locally! Player wins!');
     
     // Update game state
     this.isGameEnded = true;
@@ -1471,6 +1603,47 @@ export class MazeScene extends Phaser.Scene {
     console.log('Victory screen displayed with lobby button');
   }
 
+  private showDefeatMessage(winnerId: string) {
+    // Defeat message
+    const defeatText = this.add.text(
+      400, 250,
+      `DEFEAT!\nPlayer ${winnerId.substring(0, 8)}... Won!`,
+      {
+        fontSize: '32px',
+        color: '#E74C3C',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        align: 'center',
+        backgroundColor: '#2C3E50',
+        padding: { x: 20, y: 10 }
+      }
+    ).setOrigin(0.5);
+
+    // Back to lobby button
+    const lobbyButton = this.add.text(
+      400, 350,
+      'Back to Lobby',
+      {
+        fontSize: '18px',
+        color: '#3498DB',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        backgroundColor: '#2C3E50',
+        padding: { x: 15, y: 8 }
+      }
+    ).setOrigin(0.5)
+     .setInteractive({ useHandCursor: true })
+     .on('pointerdown', () => this.returnToLobby())
+     .on('pointerover', () => {
+       lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
+     })
+     .on('pointerout', () => {
+       lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
+     });
+
+    console.log('Defeat screen displayed with lobby button');
+  }
+
   private returnToLobby() {
     console.log('Returning to lobby...');
     
@@ -1487,33 +1660,38 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private updateObjectInteraction() {
-    if (!this.player1 || this.isGameEnded) return;
+    if ((!this.player1 && !this.player2) || this.isGameEnded) return;
 
-    const playerX = this.player1.x;
-    const playerY = this.player1.y;
     const interactionDistance = GAME_CONFIG.OBJECT_INTERACTION_DISTANCE;
 
     let closestInteractiveObject: RoomObject | null = null;
     let minDistance = Infinity;
 
-    // Find the closest interactive object IN THE SAME ROOM AS THE PLAYER
+    // Check both players
+    const players = [this.player1, this.player2].filter(p => p);
+
+    // Find the closest interactive object for any player IN THE SAME ROOM
     for (const obj of this.objects) {
       if (!obj.interactive) continue; // Skip non-interactive objects
-
-      // ROOM CHECK: Only allow interaction with objects in the same room
-      if (!this.isPlayerInRoom(obj.roomId)) continue;
 
       const objBounds = this.getObjectBounds(obj);
       if (!objBounds) continue;
 
-      // Calculate distance to object center
+      // Calculate distance to object center for each player
       const objCenterX = objBounds.left + (objBounds.right - objBounds.left) / 2;
       const objCenterY = objBounds.top + (objBounds.bottom - objBounds.top) / 2;
-      const distance = Phaser.Math.Distance.Between(playerX, playerY, objCenterX, objCenterY);
 
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestInteractiveObject = obj;
+      for (const player of players) {
+        // ROOM CHECK: Only allow interaction with objects in the same room as this player
+        const playerRoom = this.getRoomAtPosition(player.x, player.y);
+        if (!playerRoom || playerRoom.id !== obj.roomId) continue;
+
+        const distance = Phaser.Math.Distance.Between(player.x, player.y, objCenterX, objCenterY);
+
+        if (distance < minDistance) {
+          minDistance = distance;
+          closestInteractiveObject = obj;
+        }
       }
     }
 
@@ -1521,8 +1699,8 @@ export class MazeScene extends Phaser.Scene {
     if (closestInteractiveObject && minDistance <= interactionDistance) {
       this.showInteractionPrompt(closestInteractiveObject);
       
-      // Check for spacebar press to interact
-      if (Phaser.Input.Keyboard.JustDown(this.spacebar)) {
+      // Check for spacebar (Player 1) or enter (Player 2) press to interact
+      if (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         this.interactWithObject(closestInteractiveObject);
       }
     } else {
@@ -1857,5 +2035,248 @@ export class MazeScene extends Phaser.Scene {
         feedbackText.destroy();
       }
     });
+  }
+
+  // ====== NETWORKING METHODS ======
+
+  private setupNetworking(): void {
+    // Always set up event listeners (they'll be ignored if not connected)
+    console.log('🔧 Setting up networking event listeners...');
+    
+    socketManager.onPlayerMove((data) => {
+      console.log('📨 Received player move:', data);
+      this.handleRemotePlayerMove(data);
+    });
+
+    socketManager.onGameState((data) => {
+      this.handleGameStateUpdate(data);
+    });
+
+    socketManager.onKeyCollection((data) => {
+      this.handleRemoteKeyCollection(data);
+    });
+
+    socketManager.onGameWin((data) => {
+      this.handleRemoteTreasureClaim(data);
+    });
+
+    socketManager.onGameStart((data) => {
+      console.log('🎮 Game start detected - enabling networking!');
+      this.enableNetworking();
+    });
+
+    // Check initial state
+    this.checkNetworkingState();
+  }
+
+  private checkNetworkingState(): void {
+    this.isNetworked = socketManager.getConnectionStatus() && socketManager.getRoomId() !== null;
+    this.localPlayerId = socketManager.getPlayerId();
+
+    console.log('🔍 Network state check:', {
+      connected: socketManager.getConnectionStatus(),
+      hasRoom: socketManager.getRoomId() !== null,
+      playerId: this.localPlayerId,
+      roomId: socketManager.getRoomId(),
+      finalNetworked: this.isNetworked
+    });
+
+    if (this.isNetworked) {
+      this.enableNetworking();
+    }
+  }
+
+  public enableNetworking(): void {
+    this.isNetworked = true;
+    this.localPlayerId = socketManager.getPlayerId();
+    
+    console.log('🌐 NETWORKING ENABLED!', {
+      playerId: this.localPlayerId,
+      roomId: socketManager.getRoomId()
+    });
+
+    // Initialize starting position
+    if (this.player1) {
+      this.lastSentPosition = { x: this.player1.x, y: this.player1.y };
+      console.log('📍 Initial position set:', this.lastSentPosition);
+    }
+  }
+
+  private sendPlayerPositionIfNeeded(x: number, y: number): void {
+    if (!this.isNetworked || !socketManager.getConnectionStatus()) {
+      console.log('🚫 Not sending position - not networked or not connected');
+      return;
+    }
+
+    // Only send if we've moved significantly (reduces network traffic)
+    const deltaX = Math.abs(x - this.lastSentPosition.x);
+    const deltaY = Math.abs(y - this.lastSentPosition.y);
+
+    if (deltaX > this.positionSendThreshold || deltaY > this.positionSendThreshold) {
+      console.log(`📤 Sending position: (${x}, ${y}) - delta: (${deltaX}, ${deltaY})`);
+      socketManager.sendPlayerMove({
+        position: { x, y },
+        direction: this.playerDirection
+      });
+      
+      this.lastSentPosition = { x, y };
+    }
+  }
+
+  private handleRemotePlayerMove(data: any): void {
+    const { playerId, position, timestamp } = data;
+    
+    // Don't update our own player
+    if (playerId === this.localPlayerId) {
+      return;
+    }
+
+    // Get or create remote player graphics
+    let remotePlayer = this.remotePlayers.get(playerId);
+    
+    if (!remotePlayer) {
+      // Create new remote player
+      remotePlayer = this.add.graphics();
+      remotePlayer.fillStyle(0x9B59B6, 1); // Purple for remote players
+      remotePlayer.fillCircle(0, 0, 15);
+      this.remotePlayers.set(playerId, remotePlayer);
+      
+      console.log('👤 Created remote player:', playerId);
+    }
+
+    // Update remote player position
+    remotePlayer.setPosition(position.x, position.y);
+  }
+
+  private handleGameStateUpdate(data: any): void {
+    // Handle server-authoritative game state updates
+    console.log('🎮 Game state update received:', data);
+    
+    // TODO: Update keys, treasure state based on server authority
+  }
+
+  private handleRemoteKeyCollection(data: any): void {
+    const { keyId, playerId } = data;
+    
+    console.log(`🗝️ Remote key collection: ${keyId} by ${playerId}`);
+    
+    // Remove the key from our local display
+    if (this.collectedKeys.has(keyId)) {
+      console.log(`Key ${keyId} already collected locally`);
+      return; // Already collected locally
+    }
+    
+    // Mark as collected and remove visually
+    this.collectedKeys.add(keyId);
+    
+    // Remove key graphics
+    const keyGraphics = this.keyGraphics.get(keyId);
+    if (keyGraphics) {
+      keyGraphics.destroy();
+      this.keyGraphics.delete(keyId);
+    }
+    
+    // Remove key text
+    const keyText = this.keyGraphics.get(`${keyId}_text`);
+    if (keyText) {
+      keyText.destroy();
+      this.keyGraphics.delete(`${keyId}_text`);
+    }
+    
+    // Clear the highlight state if this was the highlighted key
+    if (this.highlightedKey?.id === keyId) {
+      this.highlightedKey = null;
+      if (this.activeKeyTween) {
+        this.activeKeyTween.stop();
+        this.activeKeyTween = null;
+      }
+    }
+    
+    // Update key counter
+    this.updateKeyCounter();
+    
+    console.log(`✅ Remote key ${keyId} removed from display`);
+  }
+
+  private handleRemoteTreasureClaim(data: any): void {
+    const { winnerId, winnerWallet } = data;
+    
+    console.log(`🏆 Remote treasure claimed by: ${winnerId}`);
+    
+    // Update game state
+    this.isGameEnded = true;
+    this.winnerId = winnerId;
+    
+    // Mark treasure as claimed
+    this.treasure.claimed = true;
+    this.treasure.claimedBy = winnerId;
+    
+    // Hide interaction prompt
+    this.hideTreasureInteractionPrompt();
+    
+    // Show victory/defeat screen based on who won
+    if (winnerId === this.localPlayerId) {
+      this.showVictoryMessage();
+    } else {
+      this.showDefeatMessage(winnerId);
+    }
+    
+    console.log(`🏁 Game ended! Winner: ${winnerId}`);
+  }
+
+  private attemptKeyCollection(key: Key): void {
+    if (this.isNetworked && socketManager.getConnectionStatus()) {
+      // Networked mode: Send to server for validation
+      console.log('🌐 Sending key collection to server:', key.id);
+      socketManager.sendKeyCollection({
+        keyId: key.id,
+        position: this.player1 ? { x: this.player1.x, y: this.player1.y } : { x: 0, y: 0 }
+      });
+    } else {
+      // Local mode: Handle immediately
+      console.log('🏠 Local key collection:', key.id);
+      this.collectKeyLocally(key.id);
+    }
+  }
+
+  private collectKeyLocally(keyId: string): void {
+    // Check if key already collected
+    if (this.collectedKeys.has(keyId)) {
+      console.log(`Key ${keyId} already collected`);
+      return;
+    }
+
+    // Mark key as collected
+    this.collectedKeys.add(keyId);
+
+    // Remove key graphics
+    const keyGraphics = this.keyGraphics.get(keyId);
+    if (keyGraphics) {
+      keyGraphics.destroy();
+      this.keyGraphics.delete(keyId);
+    }
+
+    // Remove key text
+    const keyText = this.keyGraphics.get(`${keyId}_text`);
+    if (keyText) {
+      keyText.destroy();
+      this.keyGraphics.delete(`${keyId}_text`);
+    }
+
+    // Clear the highlight state
+    this.highlightedKey = null;
+
+    // Update UI
+    this.updateKeyCounter();
+
+    console.log(`✅ Key collected locally: ${keyId}`);
+  }
+
+  private cleanupNetworking(): void {
+    // Clean up remote players
+    this.remotePlayers.forEach((player) => {
+      player.destroy();
+    });
+    this.remotePlayers.clear();
   }
 }

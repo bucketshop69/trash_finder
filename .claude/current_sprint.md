@@ -7,58 +7,65 @@
 - **Reference this file at the start of each session**
 
 ## Current Sprint Goal
-**Sprint 3.3: Win Conditions - ACTIVE**
+**Sprint 2.3: Multiplayer Synchronization - ACTIVE**
 
-**FOCUS**: Complete the core gameplay loop with treasure collection and victory mechanics
+**FOCUS**: Transform local multiplayer into networked real-time multiplayer using existing server foundation
 
-## Sprint 3.3 Implementation Plan
+## Sprint 2.3 Implementation Plan
 
-### Win Conditions Design
-- **Key Requirement**: 3 keys required to claim treasure
-- **Testing Mode**: Single-player only (for now)
-- **Key Placement**: Keep current key locations (strategic placement in dedicated sprint later)
-- **Treasure Interaction**: Player must press SPACE near treasure to claim
-- **Key Requirement Display**: Show "Need 3 keys" near treasure
-- **UI Display**: Show player's current key count: "Keys: X/3"
+### Multiplayer Architecture
+- **Server Foundation**: Existing Node.js + Socket.io + Redis server
+- **Integration Strategy**: Adapt server GameState to match client 3x3 maze layout
+- **Real-Time Sync**: Socket.io for movement, key collection, and game state
+- **Authority Model**: Server-authoritative for all game-changing events
 
-### Victory System
-- **Victory Screen**: Simple overlay "Player One Won!" 
-- **Game End**: Show victory overlay with back button to lobby
-- **No Hand-holding**: Players discover key requirements through gameplay
+## MICRO TASKS - Sprint 2.3
 
-## MICRO TASKS - Sprint 3.3
+### Phase 1: Server-Client Integration (Foundation)
+- [ ] **Task 1.1**: Update server GameState to use 3x3 maze layout (match client)
+- [ ] **Task 1.2**: Sync server spawn positions with client spawn positions  
+- [ ] **Task 1.3**: Update server key/treasure positions to match client MazeGenerator
+- [ ] **Task 1.4**: Test server game state generation matches client expectations
 
-### Phase 1: Treasure System
-- [x] **Task 1.1**: Add treasure object to GameTypes.ts (interface Treasure)
-- [x] **Task 1.2**: Create treasure spawning in center room (MazeGenerator)
-- [x] **Task 1.3**: Add treasure graphics/visual in center room (MazeScene)
-- [x] **Task 1.4**: Implement treasure interaction detection (player near treasure)
-- [x] **Task 1.5**: ~~Add "Need 3 keys" text display near treasure~~ (REMOVED - no text needed)
+### Phase 2: Client Socket Integration
+- [ ] **Task 2.1**: Add Socket.io client dependency to client package.json
+- [ ] **Task 2.2**: Create client-side Socket manager/service
+- [ ] **Task 2.3**: Add connection UI (connect/disconnect buttons)
+- [ ] **Task 2.4**: Test basic client-server connection handshake
 
-### Phase 2: Key Requirements
-- [x] **Task 2.1**: Add key requirement constant (KEYS_REQUIRED = 3)
-- [x] **Task 2.2**: Implement treasure claim validation (check player has 3 keys)
-- [x] **Task 2.3**: Add SPACE key interaction for treasure claiming
-- [x] **Task 2.4**: Handle insufficient keys case (show feedback/do nothing)
+### Phase 3: Real-Time Movement Sync
+- [ ] **Task 3.1**: Send player movement from client to server via Socket.io
+- [ ] **Task 3.2**: Broadcast movement updates to other players
+- [ ] **Task 3.3**: Update remote player positions on client
+- [ ] **Task 3.4**: Test smooth dual-player movement synchronization
 
-### Phase 3: Victory System
-- [x] **Task 3.1**: Add game state tracking (isGameEnded, winnerId)
-- [x] **Task 3.2**: Implement win condition trigger (successful treasure claim)
-- [x] **Task 3.3**: Create victory overlay UI component
-- [x] **Task 3.4**: Add "Player One Won!" victory message
-- [x] **Task 3.5**: Add back to lobby button functionality
+### Phase 4: Game State Synchronization
+- [ ] **Task 4.1**: Sync key collection events (client → server → broadcast)
+- [ ] **Task 4.2**: Sync treasure interaction events 
+- [ ] **Task 4.3**: Sync game win conditions and victory states
+- [ ] **Task 4.4**: Handle game state conflicts and authority resolution
 
-### Phase 4: UI Updates
-- [x] **Task 4.1**: Update key counter display to show "Keys: X/3" format
-- [x] **Task 4.2**: Add treasure interaction prompt ("Press SPACE to claim")
-- [x] **Task 4.3**: Test all UI elements display correctly
+### Phase 5: Room & Matchmaking System
+- [ ] **Task 5.1**: Add lobby/queue UI to client
+- [ ] **Task 5.2**: Implement join queue functionality
+- [ ] **Task 5.3**: Handle room creation and player matching
+- [ ] **Task 5.4**: Test full room lifecycle (join → play → leave)
 
-### Phase 5: Testing & Polish
-- [x] **Task 5.1**: Test complete flow: spawn → collect 3 keys → claim treasure → win
-- [x] **Task 5.2**: Test edge cases (not enough keys, multiple interactions)
-- [x] **Task 5.3**: Verify victory screen and lobby return works
-- [x] **Task 5.4**: Final gameplay testing and bug fixes
+### Phase 6: Error Handling & Polish
+- [ ] **Task 6.1**: Handle player disconnection gracefully  
+- [ ] **Task 6.2**: Add reconnection logic and game pause
+- [ ] **Task 6.3**: Add network lag compensation
+- [ ] **Task 6.4**: Test edge cases and network reliability
+
+## Success Criteria
+✅ Two players can join from different browsers/devices  
+✅ Real-time movement visible to both players  
+✅ Fair key collection with server authority  
+✅ Synchronized win conditions  
+✅ Graceful disconnection handling  
 
 ## Current Status
-**SPRINT 3.3 COMPLETE!** 🎉 All win conditions implemented and tested successfully!
+**SPRINT 2.3 STARTED!** 🚀 Ready to implement networked multiplayer using existing server foundation.
+
+**Next Task**: Task 1.1 - Update server GameState to use 3x3 maze layout
 

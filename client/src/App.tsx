@@ -3,6 +3,7 @@ import GameCanvas from './game/GameCanvas'
 import GameMenu from './components/GameMenu'
 import GameLobby from './components/GameLobby'
 import GameHUD from './components/GameHUD'
+import { SocketTestPanel } from './components/SocketTestPanel'
 import './App.css'
 
 type GameState = 'menu' | 'lobby' | 'playing'
@@ -54,6 +55,10 @@ function App() {
           />
           <div className="flex justify-center pt-16">
             <GameCanvas />
+          </div>
+          {/* Socket Test Panel - positioned in bottom right */}
+          <div className="fixed bottom-4 right-4 z-50">
+            <SocketTestPanel />
           </div>
         </div>
       )}

@@ -40,6 +40,10 @@ export class SocketHandler {
         this.handleCollectKey(socket, data);
       });
 
+      socket.on('claim_treasure', (data) => {
+        this.handleClaimTreasure(socket, data);
+      });
+
       // Handle disconnection
       socket.on('disconnect', () => {
         console.log(`👋 Player disconnected: ${socket.id}`);
@@ -113,6 +117,15 @@ export class SocketHandler {
     this.gameRooms.forEach((room) => {
       if (room.hasPlayer(socket.id)) {
         room.handleKeyCollection(socket.id, data);
+      }
+    });
+  }
+
+  private handleClaimTreasure(socket: Socket, data: any) {
+    // Find player's room and handle treasure claim
+    this.gameRooms.forEach((room) => {
+      if (room.hasPlayer(socket.id)) {
+        room.handleTreasureClaim(socket.id, data);
       }
     });
   }

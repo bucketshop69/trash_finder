@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { redisManager } from '../utils/redis';
+import { GameState } from '../game/GameState';
 
 const router = Router();
 
@@ -150,6 +151,99 @@ router.get('/metrics', (req, res) => {
       status: redisManager.isRedisConnected() ? 'healthy' : 'disconnected'
     }
   });
+});
+
+// Test endpoints for client-server sync verification
+router.get('/test/gamestate', (req: Request, res: Response) => {
+  try {
+    // Create a fresh GameState to test
+    const gameState = new GameState();
+    const publicState = gameState.getPublicState();
+    
+    // Format for easy client comparison
+    const formattedState = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      gameState: {
+        rooms: publicState.rooms.map((room: any) => ({
+          id: room.id,
+          position: room.position,
+          size: room.size,
+          hasKey: room.hasKey,
+          keyId: room.keyId
+        })),
+        keys: publicState.keys.map((key: any) => ({
+          id: key.id,
+          position: key.position,
+          roomId: key.roomId,
+          collected: key.collected
+        })),
+        treasure: {
+          id: publicState.treasure.id,
+          position: publicState.treasure.position,
+          roomId: publicState.treasure.roomId,
+          keysRequired: publicState.treasure.keysRequired,
+          claimed: publicState.treasure.claimed
+        },
+        config: {
+          rows: 3,
+          cols: 3,
+          roomWidth: 200,
+          roomHeight: 150,
+          offsetX: 100,
+          offsetY: 100,
+          requiredKeys: publicState.requiredKeys
+        }
+      }
+    };
+    
+    res.json(formattedState);
+  } catch (error) {
+    console.error('Error generating test game state:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to generate game state',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+router.get('/test/spawn-positions', (req: Request, res: Response) => {
+  try {
+    // Import GameRoom to test spawn positions
+    const { GameRoom } = require('../game/GameRoom');
+    
+    // Create mock room to test spawn positions
+    const mockIo = { to: () => ({ emit: () => {} }) };
+    const room = new GameRoom('test_room', mockIo);
+    
+    // Access spawn positions via reflection
+    const getSpawnPosition = room.constructor.prototype.getSpawnPosition.bind(room);
+    
+    const spawnData = {
+      success: true,
+      timestamp: new Date().toISOString(),
+      spawnPositions: {
+        player1: getSpawnPosition(0),
+        player2: getSpawnPosition(1)
+      },
+      config: {
+        roomWidth: 200,
+        roomHeight: 150,
+        offsetX: 100,
+        offsetY: 100
+      }
+    };
+    
+    res.json(spawnData);
+  } catch (error) {
+    console.error('Error getting spawn positions:', error);
+    res.status(500).json({ 
+      success: false,
+      error: 'Failed to get spawn positions',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
 });
 
 // Error handling middleware for routes
