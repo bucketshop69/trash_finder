@@ -123,6 +123,20 @@ export class SocketManager {
     this.socket.emit('leave_queue');
   }
 
+  public joinRoom(roomId: string, walletAddress?: string): void {
+    if (!this.isConnected || !this.socket) {
+      console.error('❌ Cannot join room: not connected to server');
+      return;
+    }
+
+    console.log(`🚪 Joining room ${roomId}...`);
+    this.socket.emit('join_room', {
+      roomId,
+      walletAddress: walletAddress || 'demo_wallet_' + Date.now(),
+      timestamp: Date.now()
+    });
+  }
+
   public sendPlayerMove(moveData: PlayerMoveData): void {
     if (!this.isConnected || !this.socket) return;
 

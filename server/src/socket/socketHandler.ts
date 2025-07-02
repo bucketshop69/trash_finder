@@ -31,6 +31,10 @@ export class SocketHandler {
         this.handleLeaveQueue(socket);
       });
 
+      socket.on('join_room', (data) => {
+        this.handleJoinRoom(socket, data);
+      });
+
       // Handle game actions
       socket.on('player_move', (data) => {
         this.handlePlayerMove(socket, data);
@@ -82,6 +86,30 @@ export class SocketHandler {
       }
     } else {
       socket.emit('queue_error', { message: 'Failed to join room' });
+    }
+  }
+
+  private handleJoinRoom(socket: Socket, data: any) {
+    console.log(`🚪 Player ${socket.id} joining room ${data.roomId}:`, data);
+    const room = this.gameRooms.get(data.roomId);
+
+    if (room && !room.isFull()) {
+      const joined = room.addPlayer(socket.id, data.walletAddress);
+      if (joined) {
+        socket.join(room.id);
+        socket.emit('room_joined', {
+          roomId: room.id,
+          playerCount: room.getPlayerCount()
+        });
+
+        if (room.isFull()) {
+          room.startGame();
+        }
+      } else {
+        socket.emit('queue_error', { message: 'Failed to join room' });
+      }
+    } else {
+      socket.emit('queue_error', { message: 'Room not found or is full' });
     }
   }
 
