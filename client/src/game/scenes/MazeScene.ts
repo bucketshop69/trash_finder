@@ -1,19 +1,23 @@
 import Phaser from 'phaser';
 import { MazeGenerator } from '../utils/MazeGenerator';
-import type { RoomState, Door, Key, Player, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Treasure, Player, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
 import { ObjectType, LightingState } from '../../types/GameTypes';
+import { GAME_CONFIG, PLAYER_IDS } from '../config/GameConstants';
 
 export class MazeScene extends Phaser.Scene {
   private mazeGenerator!: MazeGenerator;
   private rooms: RoomState[] = [];
   private doors: Door[] = [];
   private keys: Key[] = [];
+  private treasure!: Treasure;
   private objects: RoomObject[] = [];
   private players: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private roomGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private doorGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private keySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private keyGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private treasureGraphics!: Phaser.GameObjects.Graphics;
+  private treasureSprite!: Phaser.GameObjects.Sprite;
   private objectGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private lightingOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private internalDoorStates: Map<string, boolean> = new Map(); // true = open, false = closed
@@ -22,12 +26,16 @@ export class MazeScene extends Phaser.Scene {
   private highlightedKey: Key | null = null;
   private activeKeyTween: Phaser.Tweens.Tween | null = null;
 
+  // Game state tracking
+  private isGameEnded: boolean = false;
+  private winnerId: string | null = null;
+
   // Player movement
   private player1!: Phaser.GameObjects.Graphics;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: any;
   private spacebar!: Phaser.Input.Keyboard.Key;
-  private playerSpeed: number = 100;
+  private playerSpeed: number = GAME_CONFIG.PLAYER_SPEED;
 
   // Flashlight system
   private flashlightGraphics!: Phaser.GameObjects.Graphics;
@@ -66,6 +74,7 @@ export class MazeScene extends Phaser.Scene {
     this.rooms = mazeData.rooms;
     this.doors = mazeData.doors;
     this.keys = mazeData.keys;
+    this.treasure = mazeData.treasure;
     this.objects = mazeData.objects;
 
     // DEBUG: Validate all the data
@@ -78,6 +87,7 @@ export class MazeScene extends Phaser.Scene {
     this.createRooms();
     this.createDoors();
     this.createKeys();
+    this.createTreasure();
     this.createObjects();
     this.createLightingOverlays();
     this.createPlayers();
@@ -112,6 +122,7 @@ export class MazeScene extends Phaser.Scene {
     console.log('Rooms:', this.rooms.length, this.rooms);
     console.log('Doors:', this.doors.length, this.doors);
     console.log('Keys:', this.keys.length, this.keys);
+    console.log('Treasure:', this.treasure);
     console.log('Objects:', this.objects.length, this.objects);
 
     // Validate keys are positioned correctly
@@ -502,6 +513,26 @@ export class MazeScene extends Phaser.Scene {
     });
   }
 
+  private createTreasure() {
+    if (!this.treasure || this.treasure.claimed) return;
+
+    const treasureX = this.treasure.position.x;
+    const treasureY = this.treasure.position.y;
+    
+    // Just a simple trash can emoji - half the size
+    this.add.text(treasureX, treasureY, '🗑️', {
+      fontSize: '16px',
+      fontFamily: 'Arial'
+    }).setOrigin(0.5);
+
+    // Create invisible sprite for interaction detection
+    this.treasureSprite = this.add.sprite(treasureX, treasureY, 'key');
+    this.treasureSprite.setVisible(false);
+    this.treasureSprite.setData('treasureId', this.treasure.id);
+
+    console.log(`Treasure created at: ${treasureX}, ${treasureY} in room ${this.treasure.roomId}`);
+  }
+
   private createObjects() {
     this.objects.forEach(obj => {
       const graphics = this.add.graphics();
@@ -836,6 +867,7 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private toggleFlashlight() {
+    if (this.isGameEnded) return; // Disable when game is over
     this.flashlightEnabled = !this.flashlightEnabled;
     console.log(`Flashlight ${this.flashlightEnabled ? 'ON' : 'OFF'}`);
     
@@ -891,13 +923,14 @@ export class MazeScene extends Phaser.Scene {
   update() {
     this.handlePlayerMovement();
     this.updateKeyInteraction();
+    this.updateTreasureInteraction();
     this.updateObjectInteraction();
     this.updateDynamicLighting();
     this.updateFlashlight();
   }
 
   private handlePlayerMovement() {
-    if (!this.player1) return;
+    if (!this.player1 || this.isGameEnded) return;
 
     const speed = this.playerSpeed * (1 / 60); // 60 FPS movement
 
@@ -1120,6 +1153,7 @@ export class MazeScene extends Phaser.Scene {
   }
 
   public cycleLighting() {
+    if (this.isGameEnded) return; // Disable when game is over
     // Cycle through lighting states for testing
     this.rooms.forEach(room => {
       switch (room.lightingState) {
@@ -1140,11 +1174,11 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private updateKeyInteraction() {
-    if (!this.player1) return;
+    if (!this.player1 || this.isGameEnded) return;
 
     const playerX = this.player1.x;
     const playerY = this.player1.y;
-    const interactionDistance = 35; // Player radius (15) + key radius (10) + buffer (10)
+    const interactionDistance = GAME_CONFIG.KEY_INTERACTION_DISTANCE;
 
     let closestKey: Key | null = null;
     let minDistance = Infinity;
@@ -1263,12 +1297,201 @@ export class MazeScene extends Phaser.Scene {
     console.log(`Successfully collected key: ${keyId}`);
   }
 
-  private updateObjectInteraction() {
-    if (!this.player1) return;
+  private updateTreasureInteraction() {
+    if (!this.player1 || !this.treasure || this.treasure.claimed || this.isGameEnded) return;
 
     const playerX = this.player1.x;
     const playerY = this.player1.y;
-    const interactionDistance = 40; // Player radius (15) + object size + buffer
+    const interactionDistance = GAME_CONFIG.TREASURE_INTERACTION_DISTANCE;
+
+    // Calculate distance to treasure
+    const distance = Phaser.Math.Distance.Between(
+      playerX, playerY, 
+      this.treasure.position.x, this.treasure.position.y
+    );
+
+    // Check if player is close enough to treasure
+    if (distance <= interactionDistance) {
+      this.showTreasureInteractionPrompt();
+      
+      // Check for spacebar press to claim treasure
+      if (Phaser.Input.Keyboard.JustDown(this.spacebar)) {
+        this.attemptTreasureClaim();
+      }
+    } else {
+      this.hideTreasureInteractionPrompt();
+    }
+  }
+
+  private showTreasureInteractionPrompt() {
+    // Remove existing prompt
+    const existingPrompt = this.children.getByName('treasure_interaction_prompt');
+    if (existingPrompt) return; // Already showing
+
+    const treasureX = this.treasure.position.x;
+    const treasureY = this.treasure.position.y;
+
+    // Show interaction prompt above treasure
+    this.add.text(
+      treasureX,
+      treasureY - 30,
+      'Press SPACE to claim treasure',
+      {
+        fontSize: '12px',
+        color: '#F39C12',
+        fontFamily: 'Arial',
+        backgroundColor: '#2C3E50',
+        padding: { x: 4, y: 2 }
+      }
+    ).setOrigin(0.5).setName('treasure_interaction_prompt');
+  }
+
+  private hideTreasureInteractionPrompt() {
+    const existingPrompt = this.children.getByName('treasure_interaction_prompt');
+    if (existingPrompt) existingPrompt.destroy();
+  }
+
+  private attemptTreasureClaim() {
+    console.log(`Attempting to claim treasure. Player has ${this.collectedKeys.size} keys, needs ${this.treasure.keysRequired}`);
+    
+    // Check if player has enough keys
+    if (this.collectedKeys.size >= this.treasure.keysRequired) {
+      this.claimTreasure();
+    } else {
+      this.showInsufficientKeysFeedback();
+    }
+  }
+
+  private claimTreasure() {
+    console.log('Treasure claimed! Player wins!');
+    
+    // Update game state
+    this.isGameEnded = true;
+    this.winnerId = PLAYER_IDS.PLAYER_ONE; // Single player for now
+    
+    // Mark treasure as claimed
+    this.treasure.claimed = true;
+    this.treasure.claimedBy = this.winnerId;
+    
+    // Hide interaction prompt
+    this.hideTreasureInteractionPrompt();
+    
+    // Show victory screen
+    this.showVictoryMessage();
+    
+    console.log(`Game ended! Winner: ${this.winnerId}`);
+  }
+
+  // Public methods for game state access
+  public isGameOver(): boolean {
+    return this.isGameEnded;
+  }
+
+  public getWinner(): string | null {
+    return this.winnerId;
+  }
+
+  public getGameState() {
+    return {
+      isEnded: this.isGameEnded,
+      winnerId: this.winnerId,
+      keysCollected: this.collectedKeys.size,
+      keysRequired: this.treasure?.keysRequired || GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE,
+      treasureClaimed: this.treasure?.claimed || false
+    };
+  }
+
+  private showInsufficientKeysFeedback() {
+    const treasureX = this.treasure.position.x;
+    const treasureY = this.treasure.position.y;
+    
+    const feedbackText = this.add.text(
+      treasureX,
+      treasureY + 20,
+      `Need ${this.treasure.keysRequired} keys! You have ${this.collectedKeys.size}`,
+      {
+        fontSize: '12px',
+        color: '#E74C3C',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        backgroundColor: '#2C3E50',
+        padding: { x: 4, y: 2 }
+      }
+    ).setOrigin(0.5);
+
+    // Animate feedback
+    this.tweens.add({
+      targets: feedbackText,
+      y: treasureY - 10,
+      alpha: 0,
+      duration: 2000,
+      ease: 'Power2',
+      onComplete: () => feedbackText.destroy()
+    });
+  }
+
+  private showVictoryMessage() {
+    // Victory message
+    const victoryText = this.add.text(
+      400, 250,
+      'VICTORY!\nPlayer One Won!',
+      {
+        fontSize: '32px',
+        color: '#27AE60',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        align: 'center',
+        backgroundColor: '#2C3E50',
+        padding: { x: 20, y: 10 }
+      }
+    ).setOrigin(0.5);
+
+    // Back to lobby button
+    const lobbyButton = this.add.text(
+      400, 350,
+      'Back to Lobby',
+      {
+        fontSize: '18px',
+        color: '#3498DB',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        backgroundColor: '#2C3E50',
+        padding: { x: 15, y: 8 }
+      }
+    ).setOrigin(0.5)
+     .setInteractive({ useHandCursor: true })
+     .on('pointerdown', () => this.returnToLobby())
+     .on('pointerover', () => {
+       lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
+     })
+     .on('pointerout', () => {
+       lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
+     });
+
+    console.log('Victory screen displayed with lobby button');
+  }
+
+  private returnToLobby() {
+    console.log('Returning to lobby...');
+    
+    // TODO: Replace with actual lobby scene transition
+    // For now, we'll redirect to a basic menu/lobby
+    // In a real implementation, this would be:
+    // this.scene.start('LobbyScene');
+    
+    // Placeholder: Show alert and reload page (simulates going to lobby)
+    alert('Returning to lobby... (placeholder - would go to actual lobby scene)');
+    window.location.reload();
+    
+    console.log('Lobby return triggered');
+  }
+
+  private updateObjectInteraction() {
+    if (!this.player1 || this.isGameEnded) return;
+
+    const playerX = this.player1.x;
+    const playerY = this.player1.y;
+    const interactionDistance = GAME_CONFIG.OBJECT_INTERACTION_DISTANCE;
 
     let closestInteractiveObject: RoomObject | null = null;
     let minDistance = Infinity;

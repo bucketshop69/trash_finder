@@ -30,6 +30,15 @@ export interface Key {
   unlocksDoorsIds: string[];  // Door IDs this key unlocks
 }
 
+export interface Treasure {
+  id: string;
+  position: Position;
+  roomId: string;
+  keysRequired: number;
+  claimed: boolean;
+  claimedBy?: string;  // Player ID who claimed it
+}
+
 export enum LightingState {
   BRIGHT = "bright",    // Full visibility
   DIM = "dim",         // Reduced visibility
@@ -60,6 +69,7 @@ export interface MazeData {
   doors: Door[];
   keys: Key[];
   objects: RoomObject[];
+  treasure: Treasure;
 }
 
 // Object System Types
@@ -125,6 +135,8 @@ export interface GameState {
   doors: Map<string, Door>;
   keys: Map<string, Key>;
   players: Map<string, Player>;
+  treasure: Treasure;
   gameStarted: boolean;
+  gameEnded: boolean;
   winnerId?: string;
 }

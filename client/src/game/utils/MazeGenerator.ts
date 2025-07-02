@@ -1,5 +1,6 @@
-import type { RoomState, Door, Key, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig, RoomObject, RoomComplexity, GridPosition } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Treasure, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig, RoomObject, RoomComplexity, GridPosition } from '../../types/GameTypes';
 import { ObjectType, LightingState } from '../../types/GameTypes';
+import { GAME_CONFIG } from '../config/GameConstants';
 
 export class MazeGenerator {
   private internalConfig: MazeGeneratorConfig;
@@ -21,8 +22,9 @@ export class MazeGenerator {
     const doors = this.createDoorsFromConfig(config, rooms);
     const keys = this.createKeysFromConfig(config, rooms);
     const objects = this.createObjectsFromConfig(config, rooms);
+    const treasure = this.createTreasureFromConfig(config, rooms);
 
-    return { rooms, doors, keys, objects };
+    return { rooms, doors, keys, objects, treasure };
   }
 
   // Keep old method for backward compatibility during refactor
@@ -31,8 +33,9 @@ export class MazeGenerator {
     const doors = this.createDoors();
     const keys = this.createKeys();
     const objects = this.createObjectsForRoom1();
+    const treasure = this.createTreasureForRoom1();
 
-    return { rooms, doors, keys, objects };
+    return { rooms, doors, keys, objects, treasure };
   }
 
   private createRooms(): RoomState[] {
@@ -612,5 +615,47 @@ export class MazeGenerator {
     if (random < weights[0]) return LightingState.BRIGHT;
     if (random < weights[0] + weights[1]) return LightingState.DIM;
     return LightingState.DARK;
+  }
+
+  // Treasure creation methods
+  private createTreasureFromConfig(config: MazeConfig, rooms: RoomState[]): Treasure {
+    // Find center room in the maze
+    const centerRow = Math.floor(config.rows / 2);
+    const centerCol = Math.floor(config.cols / 2);
+    const centerRoomId = `room_${centerRow}_${centerCol}`;
+    
+    const centerRoom = rooms.find(room => room.id === centerRoomId);
+    if (!centerRoom) {
+      // Fallback: use first room if center not found
+      const fallbackRoom = rooms[0];
+      return this.createTreasureObject('center_treasure', fallbackRoom.id, fallbackRoom.position);
+    }
+
+    return this.createTreasureObject('center_treasure', centerRoomId, centerRoom.position);
+  }
+
+  private createTreasureForRoom1(): Treasure {
+    // For single room setup, place treasure in room1
+    const room1Position = this.calculateRoom1Position();
+    return this.createTreasureObject('center_treasure', 'room1', {
+      x: room1Position.x,
+      y: room1Position.y,
+      width: room1Position.width,
+      height: room1Position.height
+    });
+  }
+
+  private createTreasureObject(id: string, roomId: string, roomPosition: RoomCoordinates): Treasure {
+    return {
+      id: id,
+      position: {
+        x: roomPosition.x + roomPosition.width / 2,  // Center of room
+        y: roomPosition.y + roomPosition.height / 2
+      },
+      roomId: roomId,
+      keysRequired: GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE,
+      claimed: false,
+      claimedBy: undefined
+    };
   }
 }
