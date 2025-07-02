@@ -17,6 +17,7 @@ export class MazeScene extends Phaser.Scene {
   private objectGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private lightingOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private internalDoorStates: Map<string, boolean> = new Map(); // true = open, false = closed
+  private doorStates: Map<string, boolean> = new Map(); // true = open, false = closed (for main doors)
   private collectedKeys: Set<string> = new Set();
   private highlightedKey: Key | null = null;
   private activeKeyTween: Phaser.Tweens.Tween | null = null;
@@ -150,20 +151,11 @@ export class MazeScene extends Phaser.Scene {
     this.rooms.forEach(room => {
       const graphics = this.add.graphics();
 
-      // Room background
-      if (room.id === 'center') {
-        // Center room (treasure) - golden color
-        graphics.fillStyle(0xf39c12, 0.8);
-      } else {
-        // Regular rooms - green tint
-        graphics.fillStyle(0x27ae60, 0.3);
-      }
+      // Room floor with subtle tile texture
+      this.drawTiledFloor(graphics, room);
 
-      graphics.fillRect(room.position.x, room.position.y, room.position.width, room.position.height);
-
-      // Room border
-      graphics.lineStyle(3, 0xffffff, 1);
-      graphics.strokeRect(room.position.x, room.position.y, room.position.width, room.position.height);
+      // Create mixed perspective walls
+      this.drawMixedPerspectiveWalls(graphics, room);
 
       // Room label
       const centerX = room.position.x + room.position.width / 2;
@@ -188,73 +180,311 @@ export class MazeScene extends Phaser.Scene {
     });
   }
 
-  private createDoors() {
+  private drawMixedPerspectiveWalls(graphics: Phaser.GameObjects.Graphics, room: RoomState) {
+    const { x, y, width, height } = room.position;
+
+    // WALL HIERARCHY SYSTEM - Different thicknesses for different wall types
+    const wallTypes = this.determineWallTypes(room);
+
+    // HORIZONTAL WALLS WITH GAPS - Cut gaps where doors exist
+    this.drawHorizontalWallWithGaps(graphics, x, y - wallTypes.top.thickness, width, wallTypes.top.thickness, wallTypes.top.type, 'top', room);
+    this.drawHorizontalWallWithGaps(graphics, x, y + height, width, wallTypes.bottom.thickness, wallTypes.bottom.type, 'bottom', room);
+
+    // VERTICAL WALLS WITH GAPS - Cut gaps where doors exist
+    this.drawVerticalWallWithGaps(graphics, x - wallTypes.left.thickness, y, wallTypes.left.thickness, height, wallTypes.left.type, 'left', room);
+    this.drawVerticalWallWithGaps(graphics, x + width, y, wallTypes.right.thickness, height, wallTypes.right.type, 'right', room);
+  }
+
+  private determineWallTypes(room: RoomState) {
+    // Parse room coordinates from ID (e.g., "room_0_1" -> row=0, col=1)
+    const idParts = room.id.split('_');
+    const row = parseInt(idParts[1]) || 0;
+    const col = parseInt(idParts[2]) || 0;
+    
+    // Determine maze boundaries (assuming 3x3 grid from config)
+    const maxRow = 2; // 0, 1, 2
+    const maxCol = 2; // 0, 1, 2
+    
+    const isTopRow = row === 0;
+    const isBottomRow = row === maxRow;
+    const isLeftCol = col === 0;
+    const isRightCol = col === maxCol;
+
+    return {
+      top: { 
+        thickness: isTopRow ? 16 : 12, // Exterior vs Interior
+        type: isTopRow ? 'exterior' : 'interior'
+      },
+      bottom: { 
+        thickness: isBottomRow ? 16 : 12,
+        type: isBottomRow ? 'exterior' : 'interior' 
+      },
+      left: { 
+        thickness: isLeftCol ? 16 : 12,
+        type: isLeftCol ? 'exterior' : 'interior'
+      },
+      right: { 
+        thickness: isRightCol ? 16 : 12,
+        type: isRightCol ? 'exterior' : 'interior'
+      }
+    };
+  }
+
+  private drawHorizontalWallFace(graphics: Phaser.GameObjects.Graphics, x: number, y: number, width: number, thickness: number, wallType: string = 'interior') {
+    // Different visual styles based on wall type
+    if (wallType === 'exterior') {
+      // EXTERIOR WALLS - Thicker, darker, more substantial
+      graphics.fillStyle(0x3A3A3A, 1); // Darker base for exterior
+      graphics.fillRect(x, y, width, thickness);
+
+      // Thicker mortar lines for exterior walls
+      graphics.lineStyle(2, 0x5A5A5A, 0.9);
+      for (let i = 0; i < thickness; i += 6) {
+        graphics.lineBetween(x, y + i, x + width, y + i);
+      }
+
+      // Larger stone blocks for exterior
+      graphics.lineStyle(1, 0x5A5A5A, 0.7);
+      for (let i = 0; i < width; i += 24) {
+        graphics.lineBetween(x + i, y, x + i, y + thickness);
+      }
+    } else if (wallType === 'internal') {
+      // INTERNAL WALLS - Lighter, thinner, more refined than room walls
+      graphics.fillStyle(0x5A5A5A, 1); // Lighter gray for internal objects
+      graphics.fillRect(x, y, width, thickness);
+
+      // Fine mortar lines for internal walls
+      graphics.lineStyle(1, 0x7A7A7A, 0.6);
+      for (let i = 0; i < thickness; i += 3) {
+        graphics.lineBetween(x, y + i, x + width, y + i);
+      }
+
+      // Small blocks for internal walls
+      graphics.lineStyle(1, 0x7A7A7A, 0.4);
+      for (let i = 0; i < width; i += 12) {
+        graphics.lineBetween(x + i, y, x + i, y + thickness);
+      }
+    } else {
+      // INTERIOR WALLS - Standard room separators
+      graphics.fillStyle(0x4A4A4A, 1); // Standard gray base
+      graphics.fillRect(x, y, width, thickness);
+
+      // Standard mortar lines for interior walls
+      graphics.lineStyle(1, 0x6A6A6A, 0.8);
+      for (let i = 0; i < thickness; i += 4) {
+        graphics.lineBetween(x, y + i, x + width, y + i);
+      }
+
+      // Smaller stone blocks for interior
+      graphics.lineStyle(1, 0x6A6A6A, 0.6);
+      for (let i = 0; i < width; i += 16) {
+        graphics.lineBetween(x + i, y, x + i, y + thickness);
+      }
+    }
+  }
+
+  private drawVerticalWallEdge(graphics: Phaser.GameObjects.Graphics, x: number, y: number, thickness: number, height: number, wallType: string = 'interior') {
+    // Different visual styles based on wall type
+    if (wallType === 'exterior') {
+      // EXTERIOR WALLS - Darker, more substantial edge
+      graphics.fillStyle(0x2A2A2A, 1); // Very dark for exterior edge
+      graphics.fillRect(x, y, thickness, height);
+
+      // Stronger edge highlight for exterior
+      graphics.lineStyle(2, 0x4A4A4A, 0.8);
+      graphics.lineBetween(x, y, x, y + height); // Left edge highlight
+      
+      // Additional depth line for exterior
+      graphics.lineStyle(1, 0x1A1A1A, 0.6);
+      graphics.lineBetween(x + thickness - 1, y, x + thickness - 1, y + height); // Right edge shadow
+    } else if (wallType === 'internal') {
+      // INTERNAL WALLS - Lighter, thinner edge for furniture/internal objects
+      graphics.fillStyle(0x4A4A4A, 1); // Lighter gray for internal objects
+      graphics.fillRect(x, y, thickness, height);
+
+      // Very subtle edge highlight for internal
+      graphics.lineStyle(1, 0x6A6A6A, 0.5);
+      graphics.lineBetween(x, y, x, y + height); // Left edge highlight
+    } else {
+      // INTERIOR WALLS - Standard room separator edge view
+      graphics.fillStyle(0x3A3A3A, 1); // Standard gray for interior edge
+      graphics.fillRect(x, y, thickness, height);
+
+      // Subtle edge highlight for interior
+      graphics.lineStyle(1, 0x5A5A5A, 0.7);
+      graphics.lineBetween(x, y, x, y + height); // Left edge highlight
+    }
+  }
+
+  private drawTiledFloor(graphics: Phaser.GameObjects.Graphics, room: RoomState) {
+    const { x, y, width, height } = room.position;
+    const tileSize = 22; // 9x9 grid = 198/9 = 22px per tile
+    
+    // Base floor color
+    if (room.id === 'center') {
+      graphics.fillStyle(0xf39c12, 0.8); // Golden for treasure room
+    } else {
+      graphics.fillStyle(0x27ae60, 0.3); // Green for regular rooms
+    }
+    graphics.fillRect(x, y, width, height);
+    
+    // Very subtle tile lines (soft)
+    graphics.lineStyle(0.5, 0x000000, 0.1); // Very thin, very transparent
+    
+    // Vertical tile lines
+    for (let i = 1; i < 9; i++) {
+      const lineX = x + (i * tileSize);
+      graphics.lineBetween(lineX, y, lineX, y + height);
+    }
+    
+    // Horizontal tile lines  
+    for (let i = 1; i < 9; i++) {
+      const lineY = y + (i * tileSize);
+      graphics.lineBetween(x, lineY, x + width, lineY);
+    }
+  }
+
+  private drawHorizontalWallWithGaps(graphics: Phaser.GameObjects.Graphics, x: number, y: number, width: number, thickness: number, wallType: string, side: string, room: RoomState) {
+    const gaps = this.findGapsInWall(room, side);
+    
+    if (gaps.length === 0) {
+      // No gaps - draw full wall
+      this.drawHorizontalWallFace(graphics, x, y, width, thickness, wallType);
+      return;
+    }
+
+    // Draw wall segments with gaps
+    let currentX = x;
+    
+    gaps.forEach(gap => {
+      // Draw wall segment before gap
+      if (gap.start > currentX) {
+        const segmentWidth = gap.start - currentX;
+        this.drawHorizontalWallFace(graphics, currentX, y, segmentWidth, thickness, wallType);
+      }
+      
+      // Skip the gap (don't draw anything)
+      currentX = gap.end;
+    });
+    
+    // Draw final wall segment after last gap
+    if (currentX < x + width) {
+      const segmentWidth = (x + width) - currentX;
+      this.drawHorizontalWallFace(graphics, currentX, y, segmentWidth, thickness, wallType);
+    }
+  }
+
+  private drawVerticalWallWithGaps(graphics: Phaser.GameObjects.Graphics, x: number, y: number, thickness: number, height: number, wallType: string, side: string, room: RoomState) {
+    const gaps = this.findGapsInWall(room, side);
+    
+    if (gaps.length === 0) {
+      // No gaps - draw full wall
+      this.drawVerticalWallEdge(graphics, x, y, thickness, height, wallType);
+      return;
+    }
+
+    // Draw wall segments with gaps
+    let currentY = y;
+    
+    gaps.forEach(gap => {
+      // Draw wall segment before gap
+      if (gap.start > currentY) {
+        const segmentHeight = gap.start - currentY;
+        this.drawVerticalWallEdge(graphics, x, currentY, thickness, segmentHeight, wallType);
+      }
+      
+      // Skip the gap (don't draw anything)
+      currentY = gap.end;
+    });
+    
+    // Draw final wall segment after last gap
+    if (currentY < y + height) {
+      const segmentHeight = (y + height) - currentY;
+      this.drawVerticalWallEdge(graphics, x, currentY, thickness, segmentHeight, wallType);
+    }
+  }
+
+  private findGapsInWall(room: RoomState, side: string): Array<{start: number, end: number}> {
+    const gaps: Array<{start: number, end: number}> = [];
+    const gapWidth = 30; // Smaller collision-free space
+    
     this.doors.forEach(door => {
-      const graphics = this.add.graphics();
-
-      if (door.type === 'open') {
-        // Open door - green passage
-        graphics.fillStyle(0x2ecc71, 1);
-      } else {
-        // Locked door - red barrier
-        graphics.fillStyle(0xe74c3c, 1);
+      // Only create gaps for doors that connect to this specific room
+      if (door.connectsRooms.includes(room.id) && this.isDoorOnRoomSide(door, room, side)) {
+        if (side === 'top' || side === 'bottom') {
+          // Horizontal gap
+          gaps.push({
+            start: door.position.x - gapWidth/2,
+            end: door.position.x + gapWidth/2
+          });
+        } else {
+          // Vertical gap
+          gaps.push({
+            start: door.position.y - gapWidth/2,
+            end: door.position.y + gapWidth/2
+          });
+        }
       }
+    });
+    
+    return gaps;
+  }
 
-      const doorWidth = 20; // Standard door width for new system
+  private isDoorOnRoomSide(door: Door, room: RoomState, side: string): boolean {
+    const { x, y, width, height } = room.position;
+    const doorX = door.position.x;
+    const doorY = door.position.y;
+    const tolerance = 50; // Increased tolerance to catch more doors
+    
+    // Debug logging
+    console.log(`Checking door ${door.id} at (${doorX}, ${doorY}) for room ${room.id} side ${side}`);
+    console.log(`Room bounds: x=${x}, y=${y}, width=${width}, height=${height}`);
+    
+    switch (side) {
+      case 'top':
+        const isTopDoor = doorY >= y - tolerance && doorY <= y + tolerance && 
+               doorX >= x - tolerance && doorX <= x + width + tolerance;
+        console.log(`Top door check: ${isTopDoor}`);
+        return isTopDoor;
+      case 'bottom':
+        const isBottomDoor = doorY >= y + height - tolerance && doorY <= y + height + tolerance && 
+               doorX >= x - tolerance && doorX <= x + width + tolerance;
+        console.log(`Bottom door check: ${isBottomDoor}`);
+        return isBottomDoor;
+      case 'left':
+        const isLeftDoor = doorX >= x - tolerance && doorX <= x + tolerance && 
+               doorY >= y - tolerance && doorY <= y + height + tolerance;
+        console.log(`Left door check: ${isLeftDoor}`);
+        return isLeftDoor;
+      case 'right':
+        const isRightDoor = doorX >= x + width - tolerance && doorX <= x + width + tolerance && 
+               doorY >= y - tolerance && doorY <= y + height + tolerance;
+        console.log(`Right door check: ${isRightDoor}`);
+        return isRightDoor;
+      default:
+        return false;
+    }
+  }
 
-      if (door.orientation === 'horizontal') {
-        // Horizontal door
-        graphics.fillRect(door.position.x, door.position.y, doorWidth, 20);
-      } else {
-        // Vertical door
-        graphics.fillRect(door.position.x, door.position.y, 20, doorWidth);
-      }
-
-      // Door outline
-      graphics.lineStyle(2, 0xffffff, 1);
-      if (door.orientation === 'horizontal') {
-        graphics.strokeRect(door.position.x, door.position.y, doorWidth, 20);
-      } else {
-        graphics.strokeRect(door.position.x, door.position.y, 20, doorWidth);
-      }
-
-      // Add door labels
-      const labelX = door.orientation === 'horizontal' ? door.position.x + 20 : door.position.x + 10;
-      const labelY = door.orientation === 'horizontal' ? door.position.y - 15 : door.position.y + 20;
-
-      let labelText = '';
-      if (door.id === 'door_spawn_1') {
-        labelText = '🚪 ENTER';
-      } else if (door.type === 'open') {
-        labelText = '🚪 OPEN';
-      } else {
-        labelText = '🔒 LOCKED';
-      }
-
-      this.add.text(labelX, labelY, labelText, {
-        fontSize: '10px',
-        color: door.type === 'open' ? '#2ecc71' : '#e74c3c',
-        fontFamily: 'Arial',
-        fontStyle: 'bold'
-      }).setOrigin(0.5);
-
-      this.doorGraphics.set(door.id, graphics);
+  private createDoors() {
+    // NO DOOR GRAPHICS - doors are now just gaps in walls
+    // Only track door positions for collision-free movement
+    this.doors.forEach(door => {
+      console.log(`Door gap created at: ${door.position.x}, ${door.position.y} (${door.orientation})`);
     });
   }
+
 
   private createKeys() {
     this.keys.forEach(key => {
       if (!key.collected) {
-        // Create key graphics as colored circle
+        // Create key graphics - just the emoji, no circle background
         const graphics = this.add.graphics();
-        graphics.fillStyle(0xf1c40f, 1); // Gold color
-        graphics.fillCircle(key.position.x, key.position.y, 10);
-        graphics.lineStyle(2, 0xffffff, 1);
-        graphics.strokeCircle(key.position.x, key.position.y, 10);
+        // Remove the yellow circle - key is just the emoji now
 
         // Add key label
-        const keyText = this.add.text(key.position.x, key.position.y - 25, '🗝️', {
-          fontSize: '16px',
+        const keyText = this.add.text(key.position.x, key.position.y, '🗝️', {
+          fontSize: '20px',
           fontFamily: 'Arial'
         }).setOrigin(0.5);
 
@@ -384,21 +614,13 @@ export class MazeScene extends Phaser.Scene {
         break;
 
       case ObjectType.WALL_SEGMENT:
-        // Solid internal wall - dark gray
-        graphics.fillStyle(0x34495E, 1.0);
-        graphics.fillRect(x, y, width, height);
-        graphics.lineStyle(3, 0x2C3E50, 1);
-        graphics.strokeRect(x, y, width, height);
-        // Add brick texture lines
-        graphics.lineStyle(1, 0x2C3E50, 0.7);
-        if (width > height) { // Horizontal wall
-          for (let i = 1; i < height / 8; i++) {
-            graphics.lineBetween(x, y + (i * 8), x + width, y + (i * 8));
-          }
-        } else { // Vertical wall
-          for (let i = 1; i < width / 8; i++) {
-            graphics.lineBetween(x + (i * 8), y, x + (i * 8), y + height);
-          }
+        // Internal walls using mixed perspective system with internal hierarchy
+        if (width > height) { 
+          // Horizontal internal wall - full face view (elevation) - use internal style
+          this.drawHorizontalWallFace(graphics, x, y, width, height, 'internal');
+        } else { 
+          // Vertical internal wall - edge view (plan) - use internal style  
+          this.drawVerticalWallEdge(graphics, x, y, width, height, 'internal');
         }
         break;
 
@@ -728,10 +950,7 @@ export class MazeScene extends Phaser.Scene {
       return false;
     }
 
-    // 3. Check locked door collisions
-    if (this.isCollidingWithLockedDoor(x, y, playerRadius)) {
-      return false;
-    }
+    // 3. Door gaps are collision-free - no door collision needed
 
     // 4. Check object collisions
     if (this.isCollidingWithObjects(x, y, playerRadius)) {
@@ -796,10 +1015,13 @@ export class MazeScene extends Phaser.Scene {
     };
 
     for (const door of this.doors) {
-      if (!door.isOpen) {
+      // Use our new door state system instead of door.isOpen
+      const isDoorOpen = this.doorStates.get(door.id) || false;
+      
+      if (!isDoorOpen) {
         const doorBounds = this.getDoorBounds(door, 0);
 
-        // Check if player overlaps with locked door
+        // Check if player overlaps with closed door
         if (!(playerBounds.right < doorBounds.left ||
           playerBounds.left > doorBounds.right ||
           playerBounds.bottom < doorBounds.top ||
@@ -1051,9 +1273,12 @@ export class MazeScene extends Phaser.Scene {
     let closestInteractiveObject: RoomObject | null = null;
     let minDistance = Infinity;
 
-    // Find the closest interactive object
+    // Find the closest interactive object IN THE SAME ROOM AS THE PLAYER
     for (const obj of this.objects) {
       if (!obj.interactive) continue; // Skip non-interactive objects
+
+      // ROOM CHECK: Only allow interaction with objects in the same room
+      if (!this.isPlayerInRoom(obj.roomId)) continue;
 
       const objBounds = this.getObjectBounds(obj);
       if (!objBounds) continue;

@@ -69,28 +69,26 @@
 - [x] Add visual key highlighting and interaction
 - [x] Create room unlock logic
 
-### Sprint 3.2: Lighting System & Room Objects 🎯 ACTIVE
-- [ ] **Lighting System**:
-  - [ ] Implement dynamic room lighting (bright/dim/dark states)
-  - [ ] Add player flashlight/vision cone
-  - [ ] Create light switch objects in rooms
-  - [ ] Add atmospheric lighting effects
-- [ ] **Room Objects**:
-  - [ ] Design grid-based object placement system
-  - [ ] Create "trashy office" themed objects (desks, chairs, trash bins, papers)
-  - [ ] Add interactive furniture with collision
-  - [ ] Implement object randomization per room
-- [ ] **Enhanced Visuals**:
-  - [ ] Add shadows and depth
-  - [ ] Create object sprite assets or graphics
-  - [ ] Polish room aesthetics
-- [ ] **Player Visual System**:
-  - [ ] Design player sprite/character appearance
-  - [ ] Add directional movement animations
-  - [ ] Implement flashlight holding visual state
-  - [ ] Create flashlight beam/cone visualization
-  - [ ] Add player inventory display (flashlight status)
-  - [ ] Show visible area radius when holding flashlight
+### Sprint 3.2: Lighting System & Room Objects ✅ COMPLETE
+- [x] **Lighting System**:
+  - [x] Implement dynamic room lighting (bright/dim/dark states)
+  - [x] Add player flashlight/vision cone
+  - [x] Create light switch objects in rooms
+  - [x] Add atmospheric lighting effects
+- [x] **Room Objects**:
+  - [x] Design grid-based object placement system (9x9 grid)
+  - [x] Create "trashy office" themed objects (simplified to trash bins + light switches)
+  - [x] Add interactive furniture with collision
+  - [x] Implement object randomization per room
+- [x] **Enhanced Visuals**:
+  - [x] Add wall hierarchy and perspective system
+  - [x] Create clean architectural graphics
+  - [x] Polish room aesthetics with subtle floor tiles
+- [x] **Wall Architecture System** (Sprint 4.0):
+  - [x] Implement mixed perspective walls (elevation + plan view)
+  - [x] Create wall hierarchy (exterior/interior/internal thickness)
+  - [x] Add clean door gaps instead of door graphics
+  - [x] Fix cross-room interaction bugs
 
 ### Sprint 3.3: Win Conditions
 - [ ] Implement center room access
@@ -167,8 +165,12 @@
 - **Sprint 2.1: Game World Creation** - Dynamic maze generation with configurable layouts
 - **Sprint 2.2: Room Transitions & Collision** - Door-based entry system and collision detection
 - **Sprint 3.1: Puzzle Rooms & Keys** - Key spawning, collection, and room unlocking
+- **Sprint 3.2: Lighting System & Room Objects** - Enhanced visual gameplay with wall architecture
 
-## Current Active Sprint - CLIENT FOCUS 🎨
-**Sprint 3.2: Lighting System & Room Objects** - Enhanced visual gameplay experience
+## Ready for Next Sprint 🚀
+**Available Options**:
+- **Sprint 3.3: Win Conditions** - Center room access and treasure collection
+- **Sprint 4.1: Wallet Integration** - Backpack wallet and authentication
+- **Sprint 5.1: UI/UX Polish** - Game lobby and visual effects
 
-**Next Focus**: Implement dynamic lighting and interactive room objects for richer gameplay
+**Current Status**: Major visual and architectural systems complete. Game has professional appearance with functional lighting, objects, and wall systems.

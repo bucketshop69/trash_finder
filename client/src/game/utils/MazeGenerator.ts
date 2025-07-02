@@ -196,7 +196,24 @@ export class MazeGenerator {
       return doors;
     }
 
-    // For multi-room configurations, create connecting doors
+    // Create entrance door - ONLY to ROOM_0_0
+    const entranceRoom = rooms.find(r => r.id === 'room_0_0');
+    if (entranceRoom) {
+      const entranceDoor: Door = {
+        id: 'door_entrance_spawn',
+        type: 'open',
+        position: {
+          x: entranceRoom.position.x - 25, // Outside the left wall of ROOM_0_0
+          y: entranceRoom.position.y + entranceRoom.position.height / 2
+        },
+        orientation: 'vertical',
+        isOpen: true,
+        connectsRooms: ['spawn', 'room_0_0']
+      };
+      doors.push(entranceDoor);
+    }
+
+    // Create internal connecting doors between rooms only
     for (let row = 0; row < config.rows; row++) {
       for (let col = 0; col < config.cols; col++) {
         // Create horizontal doors (connecting rooms horizontally)
@@ -206,8 +223,8 @@ export class MazeGenerator {
             id: doorId,
             type: 'open',
             position: {
-              x: (col + 1) * config.roomWidth - 10,
-              y: row * config.roomHeight + config.roomHeight / 2 - 10
+              x: (col + 1) * config.roomWidth + 100 - 10, // Adjust for room offset
+              y: row * config.roomHeight + 100 + config.roomHeight / 2 - 10
             },
             orientation: 'vertical',
             isOpen: true,
@@ -223,8 +240,8 @@ export class MazeGenerator {
             id: doorId,
             type: 'open',
             position: {
-              x: col * config.roomWidth + config.roomWidth / 2 - 10,
-              y: (row + 1) * config.roomHeight - 10
+              x: col * config.roomWidth + 100 + config.roomWidth / 2 - 10,
+              y: (row + 1) * config.roomHeight + 100 - 10
             },
             orientation: 'horizontal',
             isOpen: true,
@@ -298,37 +315,12 @@ export class MazeGenerator {
     
     // Use grid-based placement system
     const grid = this.createEmptyGrid();
-    
-    // Place objects using grid zones
-    const deskZone = this.getGridZone('corner_nw', grid);
-    const deskPos = this.selectRandomGridPosition(deskZone);
-    if (deskPos) {
-      objects.push(this.createObject(roomId, 'desk_1', ObjectType.DESK, deskPos, {width: 2, height: 1}, true, false));
-      this.markGridOccupied(grid, deskPos, {width: 2, height: 1});
-    }
 
-    // Chair near desk
-    const chairZone = this.getGridZone('near_desk', grid, deskPos);
-    const chairPos = this.selectRandomGridPosition(chairZone);
-    if (chairPos) {
-      objects.push(this.createObject(roomId, 'chair_1', ObjectType.CHAIR, chairPos, {width: 1, height: 1}, true, false));
-      this.markGridOccupied(grid, chairPos, {width: 1, height: 1});
-    }
-
-    // Trash bin in different area
+    // Trash bin only
     const trashZone = this.getGridZone('corner_se', grid);
     const trashPos = this.selectRandomGridPosition(trashZone);
     if (trashPos) {
       objects.push(this.createObject(roomId, 'trash_1', ObjectType.TRASH_BIN, trashPos, {width: 1, height: 1}, true, false));
-      this.markGridOccupied(grid, trashPos, {width: 1, height: 1});
-    }
-
-    // Computer on desk or nearby
-    const computerZone = this.getGridZone('center', grid);
-    const computerPos = this.selectRandomGridPosition(computerZone);
-    if (computerPos) {
-      objects.push(this.createObject(roomId, 'computer_1', ObjectType.COMPUTER, computerPos, {width: 1, height: 1}, false, true));
-      this.markGridOccupied(grid, computerPos, {width: 1, height: 1});
     }
 
     return objects;
@@ -447,37 +439,10 @@ export class MazeGenerator {
     const grid = this.createEmptyGrid();
     const wallZone = this.getGridZone('walls', grid);
     
-    // Place picture on wall
-    const picturePos = this.selectRandomGridPosition(wallZone);
-    if (picturePos) {
-      objects.push(this.createObject(roomId, 'picture_1', ObjectType.PICTURE, picturePos, {width: 1, height: 1}, false, false));
-      this.markGridOccupied(grid, picturePos, {width: 1, height: 1});
-    }
-
-    // Place light switch on different wall
-    const remainingWallZone = this.getGridZone('walls', grid);
-    const switchPos = this.selectRandomGridPosition(remainingWallZone);
+    // Only place light switch - remove all other wall decorations
+    const switchPos = this.selectRandomGridPosition(wallZone);
     if (switchPos) {
       objects.push(this.createObject(roomId, 'switch_1', ObjectType.LIGHT_SWITCH, switchPos, {width: 1, height: 1}, false, true));
-      this.markGridOccupied(grid, switchPos, {width: 1, height: 1});
-    }
-
-    // Place whiteboard on another wall (larger, 2x1 size)
-    const whiteboardWallZone = this.getGridZone('walls', grid);
-    const whiteboardPos = this.selectRandomGridPosition(whiteboardWallZone.filter(pos => {
-      // Ensure there's space for 2x1 whiteboard
-      return pos.col <= 7 || pos.row <= 7; // Leave room for 2x1 object
-    }));
-    if (whiteboardPos) {
-      objects.push(this.createObject(roomId, 'whiteboard_1', ObjectType.WHITEBOARD, whiteboardPos, {width: 2, height: 1}, false, false));
-      this.markGridOccupied(grid, whiteboardPos, {width: 2, height: 1});
-    }
-
-    // Add graffiti on remaining wall space
-    const graffitiWallZone = this.getGridZone('walls', grid);
-    const graffitiPos = this.selectRandomGridPosition(graffitiWallZone);
-    if (graffitiPos) {
-      objects.push(this.createObject(roomId, 'graffiti_1', ObjectType.GRAFFITI, graffitiPos, {width: 1, height: 1}, false, false));
     }
 
     return objects;
