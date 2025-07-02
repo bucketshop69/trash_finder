@@ -30,14 +30,22 @@ export interface Key {
   unlocksDoorsIds: string[];  // Door IDs this key unlocks
 }
 
+export enum LightingState {
+  BRIGHT = "bright",    // Full visibility
+  DIM = "dim",         // Reduced visibility
+  DARK = "dark"        // Very limited visibility
+}
+
 export interface RoomState {
   id: string;
   position: RoomCoordinates;
   isLit: boolean;
+  lightingState: LightingState;  // New: detailed lighting control
   hasKey: boolean;
   keyId?: string;
   playerOccupancy: string[];  // Player IDs in room
   doors: Door[];             // Doors connected to this room
+  objects: RoomObject[];     // Objects placed in this room
 }
 
 export interface MazeConfig {
@@ -51,6 +59,49 @@ export interface MazeData {
   rooms: RoomState[];
   doors: Door[];
   keys: Key[];
+  objects: RoomObject[];
+}
+
+// Object System Types
+export enum ObjectType {
+  // Wall decorations
+  PICTURE = "picture",
+  LIGHT_SWITCH = "light_switch", 
+  WHITEBOARD = "whiteboard",
+  GRAFFITI = "graffiti",
+  
+  // Furniture objects  
+  DESK = "desk",
+  CHAIR = "chair",
+  TRASH_BIN = "trash_bin",
+  COMPUTER = "computer",
+  FILING_CABINET = "filing_cabinet",
+  CARDBOARD_BOX = "cardboard_box",
+  
+  // Internal walls (for complex layouts)
+  WALL_SEGMENT = "wall_segment",
+  INTERNAL_DOOR = "internal_door"
+}
+
+export enum RoomComplexity {
+  SIMPLE = "simple",    // Just furniture objects
+  MEDIUM = "medium",    // Add some internal wall segments  
+  COMPLEX = "complex"   // Full internal maze with multiple sub-areas
+}
+
+export interface GridPosition {
+  row: number;    // 0-8 in 9x9 grid
+  col: number;    // 0-8 in 9x9 grid
+}
+
+export interface RoomObject {
+  id: string;
+  type: ObjectType;
+  gridPosition: GridPosition;
+  size: { width: number, height: number }; // in grid cells
+  collision: boolean;     // Does this object block player movement?
+  interactive: boolean;   // Can player interact with this object?
+  roomId: string;        // Which room this object belongs to
 }
 
 export interface MazeGeneratorConfig {

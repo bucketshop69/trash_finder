@@ -325,6 +325,163 @@ if (is_reachable(exact_grid_cell) && !blocks_critical_path(exact_grid_cell)) {
 
 **Implementation**: Invisible boundary detection that updates `player.currentRoom` as they move, enabling rich game mechanics without affecting movement feel.
 
+### Advanced Object System - Internal Room Walls & Complex Layouts
+
+**Evolution from Simple Objects to Maze-within-Maze**
+
+Building on the 9x9 grid system, we can create **internal room complexity** that transforms simple rectangular rooms into mini-mazes:
+
+#### **Wall Objects for Decoration**
+```typescript
+// Wall-mounted objects (perimeter placement)
+wall_objects = {
+  pictures: ["motivational_poster", "company_photo", "abstract_art"],
+  utilities: ["light_switch", "electrical_panel", "whiteboard"],
+  storage: ["wall_shelves", "coat_hooks", "fire_extinguisher"]
+}
+
+// Placement strategy: Along grid edges (0,x), (8,x), (x,0), (x,8)
+placement_zones = ["north_wall", "south_wall", "east_wall", "west_wall"]
+```
+
+#### **Internal Room Walls - Creating Mini-Mazes**
+```
+Example: Room with Internal Wall System
+┌─┬─┬─┬─┬─┬─┬─┬─┬─┐
+│W│W│W│W│D│W│W│W│W│ ← Perimeter walls
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│.│P│.│.│.│.│W│ ← Open area
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│■│■│d│■│■│.│W│ ← Internal wall with door
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│■│.│.│.│■│.│W│ ← Wall segments
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│■│.│K│.│■│.│W│ ← Key in sub-area
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│■│■│■│■│■│.│W│ ← Solid internal wall
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│.│.│.│.│.│.│W│ ← Open area
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│.│.│.│.│.│.│.│W│
+├─┼─┼─┼─┼─┼─┼─┼─┼─┤
+│W│W│W│W│D│W│W│W│W│
+
+Legend:
+■ = Internal wall segment    d = Internal door
+P = Pictures on walls        K = Key in sub-room
+```
+
+#### **Implementation Strategy**
+
+**1. Object Types Enhancement**:
+```typescript
+enum ObjectType {
+  // Wall decorations
+  PICTURE = "picture",
+  LIGHT_SWITCH = "light_switch", 
+  WHITEBOARD = "whiteboard",
+  
+  // Furniture objects  
+  DESK = "desk",
+  TRASH_BIN = "trash_bin",
+  CHAIR = "chair",
+  
+  // Internal walls (NEW!)
+  WALL_SEGMENT = "wall_segment",
+  INTERNAL_DOOR = "internal_door"
+}
+
+interface RoomObject {
+  type: ObjectType;
+  gridPosition: { row: number, col: number };
+  size: { width: number, height: number }; // in grid cells
+  collision: boolean;
+  interactive: boolean;
+}
+```
+
+**2. Room Complexity Levels**:
+```typescript
+enum RoomComplexity {
+  SIMPLE,    // Just furniture objects
+  MEDIUM,    // Add some internal wall segments  
+  COMPLEX,   // Full internal maze with multiple sub-areas
+  BOSS       // Complex + special challenges
+}
+
+// Generation logic
+function generateRoomObjects(room: RoomState, complexity: RoomComplexity) {
+  const objects: RoomObject[] = [];
+  
+  // Always add wall decorations
+  objects.push(...generateWallDecorations(room));
+  
+  switch(complexity) {
+    case SIMPLE:
+      objects.push(...generateBasicFurniture(room));
+      break;
+    case MEDIUM:
+      objects.push(...generateBasicFurniture(room));
+      objects.push(...generateSimpleInternalWalls(room));
+      break;
+    case COMPLEX:
+      objects.push(...generateInternalMaze(room));
+      break;
+  }
+  
+  return objects;
+}
+```
+
+**3. Internal Wall System**:
+```typescript
+// Create L-shaped internal walls
+function generateSimpleInternalWalls(room: RoomState): RoomObject[] {
+  return [
+    // Horizontal wall segment
+    { type: WALL_SEGMENT, gridPosition: {row: 3, col: 2}, size: {width: 4, height: 1}, collision: true },
+    // Vertical wall segment  
+    { type: WALL_SEGMENT, gridPosition: {row: 3, col: 6}, size: {width: 1, height: 3}, collision: true },
+    // Internal door in the wall
+    { type: INTERNAL_DOOR, gridPosition: {row: 3, col: 4}, size: {width: 1, height: 1}, collision: false }
+  ];
+}
+
+// Create complex internal maze
+function generateInternalMaze(room: RoomState): RoomObject[] {
+  // Create cross-shaped or T-shaped internal walls
+  // Multiple sub-areas with connecting doors
+  // Force players to navigate internal complexity
+}
+```
+
+#### **Gameplay Benefits**
+
+**Difficulty Scaling**: 
+- Early rooms: Simple furniture layout
+- Mid-game rooms: Some internal walls to navigate around
+- Late rooms: Complex internal mazes requiring exploration
+
+**Strategic Depth**:
+- Players must explore sub-areas within rooms to find keys
+- Multiple paths through the same room
+- Hide-and-seek gameplay when opponent is in same room
+
+**Visual Richness**:
+- Pictures and decorations make rooms feel lived-in
+- Internal walls create architectural variety
+- Each room feels unique and memorable
+
+#### **Perfect Integration with Existing Systems**
+
+✅ **Uses same 9x9 grid system** - no new coordinate logic needed  
+✅ **Reuses collision detection** - walls are just objects with collision=true  
+✅ **Extends door system** - internal doors work like room doors  
+✅ **Leverages object placement** - walls are placed like furniture objects  
+✅ **Maintains performance** - all calculated once during room generation  
+
+This approach transforms the simple "4 walls and some furniture" rooms into **genuinely challenging mini-mazes** while using the exact same underlying systems we already have built.
+
 ## Expansion Possibilities
 
 - **Procedural Generation**: Random maze layouts using grid system

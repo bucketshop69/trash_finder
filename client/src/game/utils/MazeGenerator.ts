@@ -1,4 +1,5 @@
-import type { RoomState, Door, Key, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig, RoomObject, RoomComplexity, GridPosition } from '../../types/GameTypes';
+import { ObjectType, LightingState } from '../../types/GameTypes';
 
 export class MazeGenerator {
   private internalConfig: MazeGeneratorConfig;
@@ -19,8 +20,9 @@ export class MazeGenerator {
     const rooms = this.createRoomsFromConfig(config);
     const doors = this.createDoorsFromConfig(config, rooms);
     const keys = this.createKeysFromConfig(config, rooms);
+    const objects = this.createObjectsFromConfig(config, rooms);
 
-    return { rooms, doors, keys };
+    return { rooms, doors, keys, objects };
   }
 
   // Keep old method for backward compatibility during refactor
@@ -28,8 +30,9 @@ export class MazeGenerator {
     const rooms = this.createRooms();
     const doors = this.createDoors();
     const keys = this.createKeys();
+    const objects = this.createObjectsForRoom1();
 
-    return { rooms, doors, keys };
+    return { rooms, doors, keys, objects };
   }
 
   private createRooms(): RoomState[] {
@@ -42,10 +45,12 @@ export class MazeGenerator {
       id: 'room1',
       position: room1Position,
       isLit: true,
+      lightingState: LightingState.BRIGHT, // Start with bright lighting
       hasKey: true,
       keyId: 'key_room1',
       playerOccupancy: [],
-      doors: [] // Will be populated when doors are created
+      doors: [], // Will be populated when doors are created
+      objects: [] // Will be populated when objects are created
     };
 
     rooms.push(room1);
@@ -155,10 +160,12 @@ export class MazeGenerator {
           id: roomId,
           position,
           isLit: true,
+          lightingState: this.getRandomLightingState(), // Random lighting for variety
           hasKey: true, // Always have a key for simplicity
           keyId: `key_${roomId}`,
           playerOccupancy: [],
-          doors: []
+          doors: [],
+          objects: []
         };
 
         rooms.push(room);
@@ -251,5 +258,394 @@ export class MazeGenerator {
     });
 
     return keys;
+  }
+
+  // Object generation methods
+  private createObjectsForRoom1(): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create furniture and wall objects for Room1
+    objects.push(...this.generateBasicFurniture('room1'));
+    objects.push(...this.generateWallObjects('room1'));
+    
+    // Add internal walls for complexity (30% chance)
+    if (Math.random() < 0.3) {
+      objects.push(...this.generateInternalWalls('room1'));
+    }
+    
+    return objects;
+  }
+
+  private createObjectsFromConfig(config: MazeConfig, rooms: RoomState[]): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    rooms.forEach(room => {
+      // Add furniture and wall objects to each room
+      objects.push(...this.generateBasicFurniture(room.id));
+      objects.push(...this.generateWallObjects(room.id));
+      
+      // Add internal walls based on room complexity (30% chance)
+      if (Math.random() < 0.3) {
+        objects.push(...this.generateInternalWalls(room.id));
+      }
+    });
+    
+    return objects;
+  }
+
+  private generateBasicFurniture(roomId: string): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Use grid-based placement system
+    const grid = this.createEmptyGrid();
+    
+    // Place objects using grid zones
+    const deskZone = this.getGridZone('corner_nw', grid);
+    const deskPos = this.selectRandomGridPosition(deskZone);
+    if (deskPos) {
+      objects.push(this.createObject(roomId, 'desk_1', ObjectType.DESK, deskPos, {width: 2, height: 1}, true, false));
+      this.markGridOccupied(grid, deskPos, {width: 2, height: 1});
+    }
+
+    // Chair near desk
+    const chairZone = this.getGridZone('near_desk', grid, deskPos);
+    const chairPos = this.selectRandomGridPosition(chairZone);
+    if (chairPos) {
+      objects.push(this.createObject(roomId, 'chair_1', ObjectType.CHAIR, chairPos, {width: 1, height: 1}, true, false));
+      this.markGridOccupied(grid, chairPos, {width: 1, height: 1});
+    }
+
+    // Trash bin in different area
+    const trashZone = this.getGridZone('corner_se', grid);
+    const trashPos = this.selectRandomGridPosition(trashZone);
+    if (trashPos) {
+      objects.push(this.createObject(roomId, 'trash_1', ObjectType.TRASH_BIN, trashPos, {width: 1, height: 1}, true, false));
+      this.markGridOccupied(grid, trashPos, {width: 1, height: 1});
+    }
+
+    // Computer on desk or nearby
+    const computerZone = this.getGridZone('center', grid);
+    const computerPos = this.selectRandomGridPosition(computerZone);
+    if (computerPos) {
+      objects.push(this.createObject(roomId, 'computer_1', ObjectType.COMPUTER, computerPos, {width: 1, height: 1}, false, true));
+      this.markGridOccupied(grid, computerPos, {width: 1, height: 1});
+    }
+
+    return objects;
+  }
+
+  // Grid-based placement system
+  private createEmptyGrid(): boolean[][] {
+    // Create 9x9 grid, true = occupied, false = free
+    return Array(9).fill(null).map(() => Array(9).fill(false));
+  }
+
+  private getGridZone(zoneName: string, grid: boolean[][], referencePos?: GridPosition): GridPosition[] {
+    const zones: GridPosition[] = [];
+    
+    switch (zoneName) {
+      case 'corner_nw': // North-west corner
+        for (let row = 1; row <= 3; row++) {
+          for (let col = 1; col <= 3; col++) {
+            if (!grid[row][col]) zones.push({row, col});
+          }
+        }
+        break;
+        
+      case 'corner_ne': // North-east corner
+        for (let row = 1; row <= 3; row++) {
+          for (let col = 5; col <= 7; col++) {
+            if (!grid[row][col]) zones.push({row, col});
+          }
+        }
+        break;
+        
+      case 'corner_sw': // South-west corner
+        for (let row = 5; row <= 7; row++) {
+          for (let col = 1; col <= 3; col++) {
+            if (!grid[row][col]) zones.push({row, col});
+          }
+        }
+        break;
+        
+      case 'corner_se': // South-east corner
+        for (let row = 5; row <= 7; row++) {
+          for (let col = 5; col <= 7; col++) {
+            if (!grid[row][col]) zones.push({row, col});
+          }
+        }
+        break;
+        
+      case 'center': // Center area
+        for (let row = 3; row <= 5; row++) {
+          for (let col = 3; col <= 5; col++) {
+            if (!grid[row][col]) zones.push({row, col});
+          }
+        }
+        break;
+        
+      case 'near_desk': // Near desk (adjacent to reference position)
+        if (referencePos) {
+          for (let row = Math.max(1, referencePos.row - 1); row <= Math.min(7, referencePos.row + 1); row++) {
+            for (let col = Math.max(1, referencePos.col + 2); col <= Math.min(7, referencePos.col + 3); col++) {
+              if (!grid[row][col]) zones.push({row, col});
+            }
+          }
+        }
+        break;
+        
+      case 'walls': // Wall positions (perimeter)
+        // North wall
+        for (let col = 1; col <= 7; col++) {
+          if (!grid[0][col]) zones.push({row: 0, col});
+        }
+        // South wall
+        for (let col = 1; col <= 7; col++) {
+          if (!grid[8][col]) zones.push({row: 8, col});
+        }
+        // East/West walls
+        for (let row = 1; row <= 7; row++) {
+          if (!grid[row][0]) zones.push({row, col: 0});
+          if (!grid[row][8]) zones.push({row, col: 8});
+        }
+        break;
+    }
+    
+    return zones;
+  }
+
+  private selectRandomGridPosition(availablePositions: GridPosition[]): GridPosition | null {
+    if (availablePositions.length === 0) return null;
+    const randomIndex = Math.floor(Math.random() * availablePositions.length);
+    return availablePositions[randomIndex];
+  }
+
+  private markGridOccupied(grid: boolean[][], position: GridPosition, size: {width: number, height: number}) {
+    for (let row = position.row; row < position.row + size.height && row < 9; row++) {
+      for (let col = position.col; col < position.col + size.width && col < 9; col++) {
+        grid[row][col] = true;
+      }
+    }
+  }
+
+  private createObject(roomId: string, name: string, type: ObjectType, gridPos: GridPosition, size: {width: number, height: number}, collision: boolean, interactive: boolean): RoomObject {
+    return {
+      id: `${roomId}_${name}`,
+      type: type,
+      gridPosition: gridPos,
+      size: size,
+      collision: collision,
+      interactive: interactive,
+      roomId: roomId
+    };
+  }
+
+  private generateWallObjects(roomId: string): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Use grid-based placement for wall objects
+    const grid = this.createEmptyGrid();
+    const wallZone = this.getGridZone('walls', grid);
+    
+    // Place picture on wall
+    const picturePos = this.selectRandomGridPosition(wallZone);
+    if (picturePos) {
+      objects.push(this.createObject(roomId, 'picture_1', ObjectType.PICTURE, picturePos, {width: 1, height: 1}, false, false));
+      this.markGridOccupied(grid, picturePos, {width: 1, height: 1});
+    }
+
+    // Place light switch on different wall
+    const remainingWallZone = this.getGridZone('walls', grid);
+    const switchPos = this.selectRandomGridPosition(remainingWallZone);
+    if (switchPos) {
+      objects.push(this.createObject(roomId, 'switch_1', ObjectType.LIGHT_SWITCH, switchPos, {width: 1, height: 1}, false, true));
+      this.markGridOccupied(grid, switchPos, {width: 1, height: 1});
+    }
+
+    // Place whiteboard on another wall (larger, 2x1 size)
+    const whiteboardWallZone = this.getGridZone('walls', grid);
+    const whiteboardPos = this.selectRandomGridPosition(whiteboardWallZone.filter(pos => {
+      // Ensure there's space for 2x1 whiteboard
+      return pos.col <= 7 || pos.row <= 7; // Leave room for 2x1 object
+    }));
+    if (whiteboardPos) {
+      objects.push(this.createObject(roomId, 'whiteboard_1', ObjectType.WHITEBOARD, whiteboardPos, {width: 2, height: 1}, false, false));
+      this.markGridOccupied(grid, whiteboardPos, {width: 2, height: 1});
+    }
+
+    // Add graffiti on remaining wall space
+    const graffitiWallZone = this.getGridZone('walls', grid);
+    const graffitiPos = this.selectRandomGridPosition(graffitiWallZone);
+    if (graffitiPos) {
+      objects.push(this.createObject(roomId, 'graffiti_1', ObjectType.GRAFFITI, graffitiPos, {width: 1, height: 1}, false, false));
+    }
+
+    return objects;
+  }
+
+  private generateComplexLayout(roomId: string): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Start with basic furniture
+    objects.push(...this.generateBasicFurniture(roomId));
+    objects.push(...this.generateWallObjects(roomId));
+    
+    // Add internal wall segments for complexity
+    // Horizontal wall segment (creates sub-areas)
+    objects.push({
+      id: `${roomId}_wall_h1`,
+      type: ObjectType.WALL_SEGMENT,
+      gridPosition: { row: 3, col: 2 },
+      size: { width: 4, height: 1 }, // 4x1 horizontal wall
+      collision: true,
+      interactive: false,
+      roomId: roomId
+    });
+
+    // Internal door in the wall
+    objects.push({
+      id: `${roomId}_internal_door_1`,
+      type: ObjectType.INTERNAL_DOOR,
+      gridPosition: { row: 3, col: 4 },
+      size: { width: 1, height: 1 },
+      collision: false, // Door is open
+      interactive: true, // Can open/close door
+      roomId: roomId
+    });
+
+    return objects;
+  }
+
+  private generateInternalWalls(roomId: string): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create a grid to track occupied spaces
+    const grid = this.createEmptyGrid();
+    
+    // Mark existing furniture areas as occupied (simplified)
+    this.markFurnitureAreas(grid);
+    
+    // Generate different internal wall patterns
+    const patterns = ['L_shape', 'cross', 'T_shape', 'corridor'];
+    const selectedPattern = patterns[Math.floor(Math.random() * patterns.length)];
+    
+    switch (selectedPattern) {
+      case 'L_shape':
+        objects.push(...this.createLShapeWalls(roomId, grid));
+        break;
+      case 'cross':
+        objects.push(...this.createCrossWalls(roomId, grid));
+        break;
+      case 'T_shape':
+        objects.push(...this.createTShapeWalls(roomId, grid));
+        break;
+      case 'corridor':
+        objects.push(...this.createCorridorWalls(roomId, grid));
+        break;
+    }
+    
+    return objects;
+  }
+
+  private markFurnitureAreas(grid: boolean[][]) {
+    // Mark common furniture areas as occupied
+    // Corner areas (where desks/chairs typically go)
+    for (let row = 1; row <= 2; row++) {
+      for (let col = 1; col <= 3; col++) {
+        grid[row][col] = true;
+      }
+    }
+    // Center area (leave some space)
+    grid[4][4] = true;
+  }
+
+  private createLShapeWalls(roomId: string, grid: boolean[][]): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create L-shaped internal wall
+    // Horizontal segment
+    objects.push(this.createObject(roomId, 'wall_h1', ObjectType.WALL_SEGMENT, 
+      {row: 3, col: 3}, {width: 3, height: 1}, true, false));
+    
+    // Vertical segment
+    objects.push(this.createObject(roomId, 'wall_v1', ObjectType.WALL_SEGMENT, 
+      {row: 3, col: 5}, {width: 1, height: 3}, true, false));
+    
+    // Internal door in horizontal wall
+    objects.push(this.createObject(roomId, 'internal_door_1', ObjectType.INTERNAL_DOOR, 
+      {row: 3, col: 4}, {width: 1, height: 1}, false, true));
+    
+    return objects;
+  }
+
+  private createCrossWalls(roomId: string, grid: boolean[][]): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create cross-shaped internal walls
+    // Horizontal wall
+    objects.push(this.createObject(roomId, 'wall_h1', ObjectType.WALL_SEGMENT, 
+      {row: 4, col: 2}, {width: 5, height: 1}, true, false));
+    
+    // Vertical wall
+    objects.push(this.createObject(roomId, 'wall_v1', ObjectType.WALL_SEGMENT, 
+      {row: 2, col: 4}, {width: 1, height: 5}, true, false));
+    
+    // Four internal doors at cross intersections
+    objects.push(this.createObject(roomId, 'internal_door_1', ObjectType.INTERNAL_DOOR, 
+      {row: 4, col: 3}, {width: 1, height: 1}, false, true));
+    objects.push(this.createObject(roomId, 'internal_door_2', ObjectType.INTERNAL_DOOR, 
+      {row: 4, col: 5}, {width: 1, height: 1}, false, true));
+    
+    return objects;
+  }
+
+  private createTShapeWalls(roomId: string, grid: boolean[][]): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create T-shaped internal wall
+    // Horizontal base
+    objects.push(this.createObject(roomId, 'wall_h1', ObjectType.WALL_SEGMENT, 
+      {row: 5, col: 2}, {width: 4, height: 1}, true, false));
+    
+    // Vertical stem
+    objects.push(this.createObject(roomId, 'wall_v1', ObjectType.WALL_SEGMENT, 
+      {row: 2, col: 4}, {width: 1, height: 3}, true, false));
+    
+    // Door in vertical wall
+    objects.push(this.createObject(roomId, 'internal_door_1', ObjectType.INTERNAL_DOOR, 
+      {row: 3, col: 4}, {width: 1, height: 1}, false, true));
+    
+    return objects;
+  }
+
+  private createCorridorWalls(roomId: string, grid: boolean[][]): RoomObject[] {
+    const objects: RoomObject[] = [];
+    
+    // Create corridor-style walls (parallel walls with gaps)
+    // Left wall
+    objects.push(this.createObject(roomId, 'wall_v1', ObjectType.WALL_SEGMENT, 
+      {row: 2, col: 3}, {width: 1, height: 4}, true, false));
+    
+    // Right wall
+    objects.push(this.createObject(roomId, 'wall_v2', ObjectType.WALL_SEGMENT, 
+      {row: 2, col: 5}, {width: 1, height: 4}, true, false));
+    
+    // Doors for entry/exit
+    objects.push(this.createObject(roomId, 'internal_door_1', ObjectType.INTERNAL_DOOR, 
+      {row: 3, col: 3}, {width: 1, height: 1}, false, true));
+    objects.push(this.createObject(roomId, 'internal_door_2', ObjectType.INTERNAL_DOOR, 
+      {row: 5, col: 5}, {width: 1, height: 1}, false, true));
+    
+    return objects;
+  }
+
+  private getRandomLightingState(): LightingState {
+    const states = [LightingState.BRIGHT, LightingState.DIM, LightingState.DARK];
+    const weights = [0.5, 0.3, 0.2]; // 50% bright, 30% dim, 20% dark
+    
+    const random = Math.random();
+    if (random < weights[0]) return LightingState.BRIGHT;
+    if (random < weights[0] + weights[1]) return LightingState.DIM;
+    return LightingState.DARK;
   }
 }

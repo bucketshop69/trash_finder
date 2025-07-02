@@ -34,43 +34,63 @@
 
 ## Phase 2: Core Game Development
 
-### Sprint 2.1: Game World Creation (2x2 Maze) ✅
-- [x] Implement 2x2 maze layout (4 rooms + center)
+### Sprint 2.1: Game World Creation (Dynamic Maze) ✅
+- [x] Implement configurable maze layout (1x1 to NxN)
 - [x] Create room generation and coordinate system
 - [x] Add basic 2D rendering with Phaser
 - [x] Implement player spawn points and movement
+- [x] Refactor to pure data factory pattern (MazeGenerator)
+- [x] Add dynamic maze configuration system
 
-### Sprint 2.2: Room Transitions & Collision 🚨 BLOCKED
-**Current Issue**: Collision detection preventing room entry
+### Sprint 2.2: Room Transitions & Collision ✅
 - [x] Basic collision detection implemented
 - [x] Player movement from spawn area working
-- [ ] **BLOCKING**: Cannot enter rooms - collision too restrictive
-- [ ] **NEEDED**: Door-based entry system with clear labels
-- [ ] **NEEDED**: Simplified collision using door boundaries only
-- [ ] Key collection mechanics (implemented but not testable)
-- [ ] Door unlocking system (implemented but not testable)
+- [x] Door-based entry system with collision boundaries
+- [x] Simplified collision using door boundaries only
+- [x] Key collection mechanics working
+- [x] Door unlocking system functional
+- [x] Room state tracking and transitions
 
-### Sprint 2.3: Multiplayer Synchronization
+### Sprint 2.3: Multiplayer Synchronization (DEFERRED)
 - [ ] Implement real-time player position sync
-- [ ] Add player state management
+- [ ] Add player state management  
 - [ ] Create game room matching system
 - [ ] Handle player disconnections
+
+**Note**: Multiplayer features moved to later phase - focusing on client-side polish first
 
 ---
 
 ## Phase 3: Game Mechanics
 
-### Sprint 3.1: Puzzle Rooms & Keys
-- [ ] Create key spawning system
-- [ ] Implement key collection mechanics
-- [ ] Add puzzle room obstacles
-- [ ] Create room unlock logic
+### Sprint 3.1: Puzzle Rooms & Keys ✅
+- [x] Create key spawning system
+- [x] Implement key collection mechanics
+- [x] Add visual key highlighting and interaction
+- [x] Create room unlock logic
 
-### Sprint 3.2: Lighting System
-- [ ] Implement dynamic lighting
-- [ ] Add "lights off" challenge mode
-- [ ] Create vision/fog of war system
-- [ ] Add lighting effects
+### Sprint 3.2: Lighting System & Room Objects 🎯 ACTIVE
+- [ ] **Lighting System**:
+  - [ ] Implement dynamic room lighting (bright/dim/dark states)
+  - [ ] Add player flashlight/vision cone
+  - [ ] Create light switch objects in rooms
+  - [ ] Add atmospheric lighting effects
+- [ ] **Room Objects**:
+  - [ ] Design grid-based object placement system
+  - [ ] Create "trashy office" themed objects (desks, chairs, trash bins, papers)
+  - [ ] Add interactive furniture with collision
+  - [ ] Implement object randomization per room
+- [ ] **Enhanced Visuals**:
+  - [ ] Add shadows and depth
+  - [ ] Create object sprite assets or graphics
+  - [ ] Polish room aesthetics
+- [ ] **Player Visual System**:
+  - [ ] Design player sprite/character appearance
+  - [ ] Add directional movement animations
+  - [ ] Implement flashlight holding visual state
+  - [ ] Create flashlight beam/cone visualization
+  - [ ] Add player inventory display (flashlight status)
+  - [ ] Show visible area radius when holding flashlight
 
 ### Sprint 3.3: Win Conditions
 - [ ] Implement center room access
@@ -144,10 +164,11 @@
 - **Sprint 1.1: Project Structure Setup** - Complete monorepo setup with all modules
 - **Sprint 1.2: Frontend Base Setup** - React + Phaser + Tailwind + UI components
 - **Sprint 1.3: Backend Base Setup** - Node.js + Socket.io + Redis + API structure  
-- **Sprint 2.1: Game World Creation** - 2x2 maze layout + rendering + movement
+- **Sprint 2.1: Game World Creation** - Dynamic maze generation with configurable layouts
+- **Sprint 2.2: Room Transitions & Collision** - Door-based entry system and collision detection
+- **Sprint 3.1: Puzzle Rooms & Keys** - Key spawning, collection, and room unlocking
 
-## Current Active Sprint - BLOCKED 🚨
-**Sprint 2.2: Room Transitions & Collision** - Door-based entry system needed
+## Current Active Sprint - CLIENT FOCUS 🎨
+**Sprint 3.2: Lighting System & Room Objects** - Enhanced visual gameplay experience
 
-**Problem**: Overly complex collision detection preventing room entry
-**Solution**: Simplify to door-based entry with clear visual labels
+**Next Focus**: Implement dynamic lighting and interactive room objects for richer gameplay

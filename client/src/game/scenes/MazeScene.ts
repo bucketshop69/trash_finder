@@ -1,17 +1,22 @@
 import Phaser from 'phaser';
 import { MazeGenerator } from '../utils/MazeGenerator';
-import type { RoomState, Door, Key, Player, MazeConfig, MazeData } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Player, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
+import { ObjectType, LightingState } from '../../types/GameTypes';
 
 export class MazeScene extends Phaser.Scene {
   private mazeGenerator!: MazeGenerator;
   private rooms: RoomState[] = [];
   private doors: Door[] = [];
   private keys: Key[] = [];
+  private objects: RoomObject[] = [];
   private players: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private roomGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private doorGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private keySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private keyGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private objectGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private lightingOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private internalDoorStates: Map<string, boolean> = new Map(); // true = open, false = closed
   private collectedKeys: Set<string> = new Set();
   private highlightedKey: Key | null = null;
   private activeKeyTween: Phaser.Tweens.Tween | null = null;
@@ -21,7 +26,13 @@ export class MazeScene extends Phaser.Scene {
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: any;
   private spacebar!: Phaser.Input.Keyboard.Key;
-  private playerSpeed: number = 200;
+  private playerSpeed: number = 100;
+
+  // Flashlight system
+  private flashlightGraphics!: Phaser.GameObjects.Graphics;
+  private flashlightEnabled: boolean = false;
+  private playerDirection: { x: number, y: number } = { x: 1, y: 0 }; // Default facing right
+  private lastMovement: { x: number, y: number } = { x: 0, y: 0 };
 
   constructor() {
     super({ key: 'MazeScene' });
@@ -54,6 +65,7 @@ export class MazeScene extends Phaser.Scene {
     this.rooms = mazeData.rooms;
     this.doors = mazeData.doors;
     this.keys = mazeData.keys;
+    this.objects = mazeData.objects;
 
     // DEBUG: Validate all the data
     this.validateGameData();
@@ -65,7 +77,10 @@ export class MazeScene extends Phaser.Scene {
     this.createRooms();
     this.createDoors();
     this.createKeys();
+    this.createObjects();
+    this.createLightingOverlays();
     this.createPlayers();
+    this.createFlashlight();
 
     // Add title
     this.add.text(400, 20, 'Gorbagana Trash Finder - 2x2 Maze', {
@@ -75,8 +90,8 @@ export class MazeScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Add instructions
-    this.add.text(400, 550, 'WASD to move | Collect keys to unlock doors | Reach center treasure!', {
-      fontSize: '16px',
+    this.add.text(400, 550, 'WASD to move | SPACE to collect keys | L to cycle lighting | F for flashlight | Reach center treasure!', {
+      fontSize: '14px',
       color: '#cccccc',
       fontFamily: 'Arial'
     }).setOrigin(0.5);
@@ -96,6 +111,7 @@ export class MazeScene extends Phaser.Scene {
     console.log('Rooms:', this.rooms.length, this.rooms);
     console.log('Doors:', this.doors.length, this.doors);
     console.log('Keys:', this.keys.length, this.keys);
+    console.log('Objects:', this.objects.length, this.objects);
 
     // Validate keys are positioned correctly
     this.keys.forEach(key => {
@@ -106,6 +122,11 @@ export class MazeScene extends Phaser.Scene {
     this.doors.forEach(door => {
       console.log(`Door ${door.id}: type ${door.type}, isOpen: ${door.isOpen}, requiredKey: ${door.requiredKeyId}`);
     });
+
+    // Validate objects
+    this.objects.forEach(obj => {
+      console.log(`Object ${obj.id}: type ${obj.type}, grid (${obj.gridPosition.row},${obj.gridPosition.col}), collision: ${obj.collision}, roomId: ${obj.roomId}`);
+    });
   }
 
   private debugGameState() {
@@ -114,6 +135,15 @@ export class MazeScene extends Phaser.Scene {
     console.log('Key sprites created:', this.keySprites.size);
     console.log('Collected keys:', this.collectedKeys.size);
     console.log('Player position:', this.player1?.x, this.player1?.y);
+    console.log('Object graphics created:', this.objectGraphics.size);
+    
+    // Debug object collision bounds
+    this.objects.forEach(obj => {
+      if (obj.collision) {
+        const bounds = this.getObjectBounds(obj);
+        console.log(`Collision object ${obj.id}: bounds`, bounds);
+      }
+    });
   }
 
   private createRooms() {
@@ -242,6 +272,307 @@ export class MazeScene extends Phaser.Scene {
     });
   }
 
+  private createObjects() {
+    this.objects.forEach(obj => {
+      const graphics = this.add.graphics();
+      
+      // Calculate screen position from grid position
+      const room = this.rooms.find(r => r.id === obj.roomId);
+      if (!room) {
+        console.warn(`Room ${obj.roomId} not found for object ${obj.id}`);
+        return;
+      }
+
+      // Grid cell size - use generator config
+      const gridCellWidth = 22;  // From MazeGenerator config
+      const gridCellHeight = 16; // From MazeGenerator config
+      
+      const screenX = room.position.x + (obj.gridPosition.col * gridCellWidth);
+      const screenY = room.position.y + (obj.gridPosition.row * gridCellHeight);
+      const objectWidth = obj.size.width * gridCellWidth;
+      const objectHeight = obj.size.height * gridCellHeight;
+
+      // Draw object based on type
+      this.drawObjectByType(graphics, obj.type, screenX, screenY, objectWidth, objectHeight);
+
+      // Initialize internal door states (closed by default)
+      if (obj.type === ObjectType.INTERNAL_DOOR) {
+        this.internalDoorStates.set(obj.id, false); // false = closed
+      }
+
+      // Add object label for debugging
+      this.add.text(screenX + objectWidth/2, screenY + objectHeight/2, this.getObjectEmoji(obj.type), {
+        fontSize: '12px',
+        fontFamily: 'Arial'
+      }).setOrigin(0.5);
+
+      this.objectGraphics.set(obj.id, graphics);
+    });
+  }
+
+  private drawObjectByType(graphics: Phaser.GameObjects.Graphics, type: ObjectType, x: number, y: number, width: number, height: number) {
+    switch (type) {
+      case ObjectType.DESK:
+        // Brown desk color
+        graphics.fillStyle(0x8B4513, 0.8);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x654321, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.CHAIR:
+        // Dark gray chair
+        graphics.fillStyle(0x2C3E50, 0.8);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x1A252F, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.TRASH_BIN:
+        // Dark green trash bin
+        graphics.fillStyle(0x27AE60, 0.8);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x1E8449, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.COMPUTER:
+        // Blue-gray computer
+        graphics.fillStyle(0x34495E, 0.8);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x2C3E50, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.PICTURE:
+        // Gold frame picture
+        graphics.fillStyle(0xF1C40F, 0.6);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0xD4AC0D, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.LIGHT_SWITCH:
+        // White light switch
+        graphics.fillStyle(0xECF0F1, 0.9);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0xBDC3C7, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.WHITEBOARD:
+        // White whiteboard with black border
+        graphics.fillStyle(0xF8F9FA, 0.9);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(3, 0x2C3E50, 1);
+        graphics.strokeRect(x, y, width, height);
+        // Add some "text" lines
+        graphics.lineStyle(1, 0x95A5A6, 0.7);
+        for (let i = 1; i <= 3; i++) {
+          graphics.lineBetween(x + 2, y + (height/4) * i, x + width - 2, y + (height/4) * i);
+        }
+        break;
+
+      case ObjectType.GRAFFITI:
+        // Colorful graffiti patch
+        graphics.fillStyle(0xE74C3C, 0.6);
+        graphics.fillRect(x, y, width, height);
+        graphics.fillStyle(0x9B59B6, 0.4);
+        graphics.fillRect(x + 2, y + 2, width - 4, height - 4);
+        graphics.lineStyle(2, 0x8E44AD, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+
+      case ObjectType.WALL_SEGMENT:
+        // Solid internal wall - dark gray
+        graphics.fillStyle(0x34495E, 1.0);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(3, 0x2C3E50, 1);
+        graphics.strokeRect(x, y, width, height);
+        // Add brick texture lines
+        graphics.lineStyle(1, 0x2C3E50, 0.7);
+        if (width > height) { // Horizontal wall
+          for (let i = 1; i < height / 8; i++) {
+            graphics.lineBetween(x, y + (i * 8), x + width, y + (i * 8));
+          }
+        } else { // Vertical wall
+          for (let i = 1; i < width / 8; i++) {
+            graphics.lineBetween(x + (i * 8), y, x + (i * 8), y + height);
+          }
+        }
+        break;
+
+      case ObjectType.INTERNAL_DOOR:
+        // Internal door - brownish color
+        graphics.fillStyle(0x8B4513, 0.9);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x654321, 1);
+        graphics.strokeRect(x, y, width, height);
+        // Add door handle
+        graphics.fillStyle(0xF1C40F, 1);
+        graphics.fillCircle(x + width - 4, y + height/2, 2);
+        break;
+
+      default:
+        // Default gray object
+        graphics.fillStyle(0x95A5A6, 0.7);
+        graphics.fillRect(x, y, width, height);
+        graphics.lineStyle(2, 0x7F8C8D, 1);
+        graphics.strokeRect(x, y, width, height);
+        break;
+    }
+  }
+
+  private getObjectEmoji(type: ObjectType): string {
+    switch (type) {
+      case ObjectType.DESK: return '🗃️';
+      case ObjectType.CHAIR: return '🪑';
+      case ObjectType.TRASH_BIN: return '🗑️';
+      case ObjectType.COMPUTER: return '💻';
+      case ObjectType.PICTURE: return '🖼️';
+      case ObjectType.LIGHT_SWITCH: return '💡';
+      case ObjectType.FILING_CABINET: return '🗄️';
+      case ObjectType.CARDBOARD_BOX: return '📦';
+      case ObjectType.WHITEBOARD: return '📋';
+      case ObjectType.GRAFFITI: return '🎨';
+      case ObjectType.WALL_SEGMENT: return '🧱';
+      case ObjectType.INTERNAL_DOOR: return '🚪';
+      default: return '📦';
+    }
+  }
+
+  private createLightingOverlays() {
+    this.rooms.forEach(room => {
+      const overlay = this.add.graphics();
+      
+      // Create lighting overlay based on room's lighting state
+      this.updateRoomLighting(room.id, room.lightingState);
+      
+      this.lightingOverlays.set(room.id, overlay);
+    });
+  }
+
+  private updateRoomLighting(roomId: string, lightingState: LightingState) {
+    const room = this.rooms.find(r => r.id === roomId);
+    const overlay = this.lightingOverlays.get(roomId);
+    
+    if (!room || !overlay) return;
+
+    // Clear previous lighting
+    overlay.clear();
+
+    switch (lightingState) {
+      case LightingState.BRIGHT:
+        // No overlay - full visibility
+        break;
+        
+      case LightingState.DIM:
+        // Semi-transparent dark overlay
+        overlay.fillStyle(0x000000, 0.3);
+        overlay.fillRect(room.position.x, room.position.y, room.position.width, room.position.height);
+        break;
+        
+      case LightingState.DARK:
+        // Create mask for visibility
+        this.createDarkRoomMask(room, overlay);
+        break;
+    }
+
+    // Add lighting state indicator
+    this.add.text(room.position.x + 5, room.position.y + 5, this.getLightingEmoji(lightingState), {
+      fontSize: '16px',
+      fontFamily: 'Arial'
+    });
+  }
+
+  private createDarkRoomMask(room: RoomState, overlay: Phaser.GameObjects.Graphics) {
+    // Start with full darkness
+    overlay.fillStyle(0x000000, 0.85);
+    overlay.fillRect(room.position.x, room.position.y, room.position.width, room.position.height);
+
+    const playerInRoom = this.isPlayerInRoom(room.id);
+    if (!playerInRoom || !this.player1) return;
+
+    // Create visibility holes in the darkness
+    if (this.flashlightEnabled) {
+      // Use flashlight cone for visibility
+      this.createFlashlightMask(overlay);
+    } else {
+      // Basic visibility circle
+      overlay.fillStyle(0x000000, 0.3); // Lighter area around player
+      overlay.fillCircle(this.player1.x, this.player1.y, 35);
+    }
+  }
+
+  private createFlashlightMask(overlay: Phaser.GameObjects.Graphics) {
+    const playerX = this.player1.x;
+    const playerY = this.player1.y;
+    const flashlightRange = 80;
+    const coneAngle = Math.PI / 3; // 60 degrees
+
+    // Calculate flashlight direction angle
+    const directionAngle = Math.atan2(this.playerDirection.y, this.playerDirection.x);
+    
+    // Create cone mask points
+    const conePoints: number[] = [];
+    conePoints.push(playerX, playerY);
+    
+    const steps = 12;
+    for (let i = 0; i <= steps; i++) {
+      const angle = directionAngle - coneAngle/2 + (coneAngle * i / steps);
+      const x = playerX + Math.cos(angle) * flashlightRange;
+      const y = playerY + Math.sin(angle) * flashlightRange;
+      conePoints.push(x, y);
+    }
+
+    // Create illuminated area by drawing lighter overlay
+    overlay.fillStyle(0x000000, 0.2); // Much lighter in flashlight area
+    overlay.fillPoints(conePoints, true);
+
+    // Bright center
+    const centerPoints: number[] = [];
+    centerPoints.push(playerX, playerY);
+    
+    const narrowConeAngle = Math.PI / 6; // 30 degrees
+    for (let i = 0; i <= 6; i++) {
+      const angle = directionAngle - narrowConeAngle/2 + (narrowConeAngle * i / 6);
+      const x = playerX + Math.cos(angle) * (flashlightRange * 0.7);
+      const y = playerY + Math.sin(angle) * (flashlightRange * 0.7);
+      centerPoints.push(x, y);
+    }
+    
+    overlay.fillStyle(0x000000, 0.1); // Very light in center
+    overlay.fillPoints(centerPoints, true);
+
+    // Bright core around player
+    overlay.fillStyle(0x000000, 0.0); // Fully illuminated core
+    overlay.fillCircle(
+      playerX + Math.cos(directionAngle) * 20, 
+      playerY + Math.sin(directionAngle) * 20, 
+      20
+    );
+  }
+
+  private isPlayerInRoom(roomId: string): boolean {
+    if (!this.player1) return false;
+    const room = this.rooms.find(r => r.id === roomId);
+    if (!room) return false;
+
+    return this.player1.x >= room.position.x && 
+           this.player1.x <= room.position.x + room.position.width &&
+           this.player1.y >= room.position.y && 
+           this.player1.y <= room.position.y + room.position.height;
+  }
+
+  private getLightingEmoji(state: LightingState): string {
+    switch (state) {
+      case LightingState.BRIGHT: return '☀️';
+      case LightingState.DIM: return '🌤️';
+      case LightingState.DARK: return '🌙';
+      default: return '💡';
+    }
+  }
+
   private createPlayers() {
     // Create player 1 (blue circle) - controllable
     // Position outside the room entrance
@@ -267,6 +598,50 @@ export class MazeScene extends Phaser.Scene {
     }).setOrigin(0.5);
   }
 
+  private createFlashlight() {
+    // Create flashlight graphics layer (rendered above lighting overlays)
+    this.flashlightGraphics = this.add.graphics();
+    this.flashlightGraphics.setDepth(1000); // Render on top of everything
+  }
+
+  private updatePlayerDirection(velocityX: number, velocityY: number) {
+    // Normalize the movement vector to get direction
+    const magnitude = Math.sqrt(velocityX * velocityX + velocityY * velocityY);
+    if (magnitude > 0) {
+      this.playerDirection.x = velocityX / magnitude;
+      this.playerDirection.y = velocityY / magnitude;
+    }
+  }
+
+  private toggleFlashlight() {
+    this.flashlightEnabled = !this.flashlightEnabled;
+    console.log(`Flashlight ${this.flashlightEnabled ? 'ON' : 'OFF'}`);
+    
+    if (!this.flashlightEnabled) {
+      this.flashlightGraphics.clear();
+    }
+  }
+
+  private updateFlashlight() {
+    // Clear any old flashlight graphics (we now use mask system)
+    this.flashlightGraphics.clear();
+    
+    // The flashlight effect is now handled in updateDynamicLighting()
+    // through the mask system which properly reveals objects
+  }
+
+  private getCurrentPlayerRoom(): RoomState | null {
+    if (!this.player1) return null;
+    
+    return this.rooms.find(room => 
+      this.player1.x >= room.position.x && 
+      this.player1.x <= room.position.x + room.position.width &&
+      this.player1.y >= room.position.y && 
+      this.player1.y <= room.position.y + room.position.height
+    ) || null;
+  }
+
+
   private setupControls() {
     // Create cursor keys (arrow keys)
     this.cursors = this.input.keyboard!.createCursorKeys();
@@ -276,7 +651,14 @@ export class MazeScene extends Phaser.Scene {
 
     // Add spacebar for key collection
     this.spacebar = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    console.log(this.spacebar)
+    
+    // Add L key for cycling lighting states (for testing)
+    const lKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.L);
+    lKey.on('down', () => this.cycleLighting());
+
+    // Add F key for toggling flashlight
+    const fKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.F);
+    fKey.on('down', () => this.toggleFlashlight());
     // DEBUG: Validate input setup
     console.log('Input setup complete:');
     console.log('- Cursors:', this.cursors);
@@ -287,6 +669,9 @@ export class MazeScene extends Phaser.Scene {
   update() {
     this.handlePlayerMovement();
     this.updateKeyInteraction();
+    this.updateObjectInteraction();
+    this.updateDynamicLighting();
+    this.updateFlashlight();
   }
 
   private handlePlayerMovement() {
@@ -321,6 +706,10 @@ export class MazeScene extends Phaser.Scene {
       // Check if the new position is valid (no collision)
       if (this.isValidPosition(newX, newY)) {
         this.player1.setPosition(newX, newY);
+        
+        // Update player direction for flashlight
+        this.updatePlayerDirection(velocityX, velocityY);
+        this.lastMovement = { x: velocityX, y: velocityY };
       }
     }
   }
@@ -341,6 +730,11 @@ export class MazeScene extends Phaser.Scene {
 
     // 3. Check locked door collisions
     if (this.isCollidingWithLockedDoor(x, y, playerRadius)) {
+      return false;
+    }
+
+    // 4. Check object collisions
+    if (this.isCollidingWithObjects(x, y, playerRadius)) {
       return false;
     }
 
@@ -436,6 +830,91 @@ export class MazeScene extends Phaser.Scene {
         bottom: door.position.y + doorWidth + padding
       };
     }
+  }
+
+  private isCollidingWithObjects(x: number, y: number, playerRadius: number): boolean {
+    const playerBounds = {
+      left: x - playerRadius,
+      right: x + playerRadius,
+      top: y - playerRadius,
+      bottom: y + playerRadius
+    };
+
+    // Check collision with all objects that have collision enabled
+    for (const obj of this.objects) {
+      if (!obj.collision) continue; // Skip non-collision objects
+
+      // Special handling for internal doors
+      if (obj.type === ObjectType.INTERNAL_DOOR) {
+        const isOpen = this.internalDoorStates.get(obj.id) || false;
+        if (isOpen) continue; // Open doors don't block movement
+      }
+
+      // Get object bounds from grid position
+      const objBounds = this.getObjectBounds(obj);
+      if (!objBounds) continue;
+
+      // Check if player overlaps with object
+      if (!(playerBounds.right < objBounds.left ||
+            playerBounds.left > objBounds.right ||
+            playerBounds.bottom < objBounds.top ||
+            playerBounds.top > objBounds.bottom)) {
+        return true; // Collision detected
+      }
+    }
+
+    return false;
+  }
+
+  private getObjectBounds(obj: RoomObject): { left: number, right: number, top: number, bottom: number } | null {
+    // Find the room this object belongs to
+    const room = this.rooms.find(r => r.id === obj.roomId);
+    if (!room) return null;
+
+    // Convert grid position to screen coordinates
+    const gridCellWidth = 22;  // From MazeGenerator config
+    const gridCellHeight = 16; // From MazeGenerator config
+    
+    const screenX = room.position.x + (obj.gridPosition.col * gridCellWidth);
+    const screenY = room.position.y + (obj.gridPosition.row * gridCellHeight);
+    const objectWidth = obj.size.width * gridCellWidth;
+    const objectHeight = obj.size.height * gridCellHeight;
+
+    return {
+      left: screenX,
+      right: screenX + objectWidth,
+      top: screenY,
+      bottom: screenY + objectHeight
+    };
+  }
+
+  private updateDynamicLighting() {
+    // Update lighting overlays that depend on player position (like DARK rooms)
+    this.rooms.forEach(room => {
+      if (room.lightingState === LightingState.DARK) {
+        this.updateRoomLighting(room.id, room.lightingState);
+      }
+    });
+  }
+
+  public cycleLighting() {
+    // Cycle through lighting states for testing
+    this.rooms.forEach(room => {
+      switch (room.lightingState) {
+        case LightingState.BRIGHT:
+          room.lightingState = LightingState.DIM;
+          break;
+        case LightingState.DIM:
+          room.lightingState = LightingState.DARK;
+          break;
+        case LightingState.DARK:
+          room.lightingState = LightingState.BRIGHT;
+          break;
+      }
+      this.updateRoomLighting(room.id, room.lightingState);
+    });
+    
+    console.log('Lighting cycled! Press L to cycle again.');
   }
 
   private updateKeyInteraction() {
@@ -560,6 +1039,270 @@ export class MazeScene extends Phaser.Scene {
     this.highlightedKey = null;
 
     console.log(`Successfully collected key: ${keyId}`);
+  }
+
+  private updateObjectInteraction() {
+    if (!this.player1) return;
+
+    const playerX = this.player1.x;
+    const playerY = this.player1.y;
+    const interactionDistance = 40; // Player radius (15) + object size + buffer
+
+    let closestInteractiveObject: RoomObject | null = null;
+    let minDistance = Infinity;
+
+    // Find the closest interactive object
+    for (const obj of this.objects) {
+      if (!obj.interactive) continue; // Skip non-interactive objects
+
+      const objBounds = this.getObjectBounds(obj);
+      if (!objBounds) continue;
+
+      // Calculate distance to object center
+      const objCenterX = objBounds.left + (objBounds.right - objBounds.left) / 2;
+      const objCenterY = objBounds.top + (objBounds.bottom - objBounds.top) / 2;
+      const distance = Phaser.Math.Distance.Between(playerX, playerY, objCenterX, objCenterY);
+
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestInteractiveObject = obj;
+      }
+    }
+
+    // Show interaction prompt if close enough
+    if (closestInteractiveObject && minDistance <= interactionDistance) {
+      this.showInteractionPrompt(closestInteractiveObject);
+      
+      // Check for spacebar press to interact
+      if (Phaser.Input.Keyboard.JustDown(this.spacebar)) {
+        this.interactWithObject(closestInteractiveObject);
+      }
+    } else {
+      this.hideInteractionPrompt();
+    }
+  }
+
+  private showInteractionPrompt(obj: RoomObject) {
+    // Remove existing prompt
+    const existingPrompt = this.children.getByName('interaction_prompt');
+    if (existingPrompt) existingPrompt.destroy();
+
+    const objBounds = this.getObjectBounds(obj);
+    if (!objBounds) return;
+
+    let promptText = '';
+    switch (obj.type) {
+      case ObjectType.LIGHT_SWITCH:
+        promptText = 'Press SPACE to toggle lights';
+        break;
+      case ObjectType.COMPUTER:
+        promptText = 'Press SPACE to use computer';
+        break;
+      case ObjectType.INTERNAL_DOOR:
+        promptText = 'Press SPACE to open/close door';
+        break;
+      default:
+        promptText = 'Press SPACE to interact';
+        break;
+    }
+
+    // Show prompt above the object
+    this.add.text(
+      objBounds.left + (objBounds.right - objBounds.left) / 2,
+      objBounds.top - 25,
+      promptText,
+      {
+        fontSize: '12px',
+        color: '#F39C12',
+        fontFamily: 'Arial',
+        backgroundColor: '#2C3E50',
+        padding: { x: 4, y: 2 }
+      }
+    ).setOrigin(0.5).setName('interaction_prompt');
+  }
+
+  private hideInteractionPrompt() {
+    const existingPrompt = this.children.getByName('interaction_prompt');
+    if (existingPrompt) existingPrompt.destroy();
+  }
+
+  private interactWithObject(obj: RoomObject) {
+    console.log(`Interacting with ${obj.type} - ${obj.id}`);
+
+    switch (obj.type) {
+      case ObjectType.LIGHT_SWITCH:
+        this.toggleRoomLighting(obj.roomId);
+        break;
+      case ObjectType.COMPUTER:
+        this.useComputer(obj);
+        break;
+      case ObjectType.INTERNAL_DOOR:
+        this.toggleInternalDoor(obj);
+        break;
+      default:
+        console.log(`No interaction defined for ${obj.type}`);
+        break;
+    }
+  }
+
+  private toggleRoomLighting(roomId: string) {
+    const room = this.rooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    // Cycle through lighting states
+    switch (room.lightingState) {
+      case LightingState.BRIGHT:
+        room.lightingState = LightingState.DIM;
+        break;
+      case LightingState.DIM:
+        room.lightingState = LightingState.DARK;
+        break;
+      case LightingState.DARK:
+        room.lightingState = LightingState.BRIGHT;
+        break;
+    }
+
+    // Update the lighting visually
+    this.updateRoomLighting(roomId, room.lightingState);
+
+    // Show feedback
+    this.showLightSwitchFeedback(roomId, room.lightingState);
+  }
+
+  private showLightSwitchFeedback(roomId: string, newState: LightingState) {
+    const room = this.rooms.find(r => r.id === roomId);
+    if (!room) return;
+
+    const feedbackText = this.add.text(
+      room.position.x + room.position.width / 2,
+      room.position.y + room.position.height / 2,
+      `Lights: ${newState.toUpperCase()}`,
+      {
+        fontSize: '16px',
+        color: '#F39C12',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        backgroundColor: '#2C3E50',
+        padding: { x: 8, y: 4 }
+      }
+    ).setOrigin(0.5);
+
+    // Animate feedback
+    this.tweens.add({
+      targets: feedbackText,
+      y: room.position.y + room.position.height / 2 - 30,
+      alpha: 0,
+      duration: 2000,
+      ease: 'Power2',
+      onComplete: () => feedbackText.destroy()
+    });
+
+    console.log(`Room ${roomId} lighting changed to: ${newState}`);
+  }
+
+  private useComputer(obj: RoomObject) {
+    // Placeholder for computer interaction
+    const objBounds = this.getObjectBounds(obj);
+    if (!objBounds) return;
+
+    const feedbackText = this.add.text(
+      objBounds.left + (objBounds.right - objBounds.left) / 2,
+      objBounds.top - 10,
+      'Computer activated!',
+      {
+        fontSize: '12px',
+        color: '#3498DB',
+        fontFamily: 'Arial',
+        fontStyle: 'bold'
+      }
+    ).setOrigin(0.5);
+
+    // Animate feedback
+    this.tweens.add({
+      targets: feedbackText,
+      y: objBounds.top - 40,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => feedbackText.destroy()
+    });
+
+    console.log(`Used computer: ${obj.id}`);
+  }
+
+  private toggleInternalDoor(obj: RoomObject) {
+    const currentState = this.internalDoorStates.get(obj.id) || false;
+    const newState = !currentState;
+    this.internalDoorStates.set(obj.id, newState);
+
+    // Update visual appearance
+    this.updateInternalDoorVisual(obj, newState);
+
+    // Show feedback
+    const objBounds = this.getObjectBounds(obj);
+    if (!objBounds) return;
+
+    const feedbackText = this.add.text(
+      objBounds.left + (objBounds.right - objBounds.left) / 2,
+      objBounds.top - 20,
+      newState ? 'Door OPENED' : 'Door CLOSED',
+      {
+        fontSize: '12px',
+        color: newState ? '#27AE60' : '#E74C3C',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        backgroundColor: '#2C3E50',
+        padding: { x: 4, y: 2 }
+      }
+    ).setOrigin(0.5);
+
+    // Animate feedback
+    this.tweens.add({
+      targets: feedbackText,
+      y: objBounds.top - 50,
+      alpha: 0,
+      duration: 1500,
+      ease: 'Power2',
+      onComplete: () => feedbackText.destroy()
+    });
+
+    console.log(`Internal door ${obj.id} ${newState ? 'opened' : 'closed'}`);
+  }
+
+  private updateInternalDoorVisual(obj: RoomObject, isOpen: boolean) {
+    const graphics = this.objectGraphics.get(obj.id);
+    if (!graphics) return;
+
+    const objBounds = this.getObjectBounds(obj);
+    if (!objBounds) return;
+
+    const x = objBounds.left;
+    const y = objBounds.top;
+    const width = objBounds.right - objBounds.left;
+    const height = objBounds.bottom - objBounds.top;
+
+    // Clear and redraw
+    graphics.clear();
+
+    if (isOpen) {
+      // Open door - lighter brown, partially transparent
+      graphics.fillStyle(0xD2691E, 0.5);
+      graphics.fillRect(x, y, width, height);
+      graphics.lineStyle(2, 0xA0522D, 0.7);
+      graphics.strokeRect(x, y, width, height);
+      // Door slightly ajar indicator
+      graphics.fillStyle(0x000000, 0.3);
+      graphics.fillRect(x + 2, y, 2, height);
+    } else {
+      // Closed door - solid brown
+      graphics.fillStyle(0x8B4513, 0.9);
+      graphics.fillRect(x, y, width, height);
+      graphics.lineStyle(2, 0x654321, 1);
+      graphics.strokeRect(x, y, width, height);
+      // Door handle
+      graphics.fillStyle(0xF1C40F, 1);
+      graphics.fillCircle(x + width - 4, y + height/2, 2);
+    }
   }
 
   private showKeyCollectionFeedback(x: number, y: number, keyId: string) {
