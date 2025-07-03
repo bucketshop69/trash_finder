@@ -6,6 +6,8 @@ import GameLobby from './components/GameLobby'
 import GameHUD from './components/GameHUD'
 import './App.css'
 
+// Deployment trigger comment - updated for production build
+
 type GameState = 'menu' | 'lobby' | 'waiting' | 'playing'
 
 function App() {
