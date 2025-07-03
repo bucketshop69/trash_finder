@@ -1,5 +1,6 @@
 import { Server } from 'socket.io';
 import { GameState } from './GameState';
+import { generateRoomId, deriveGameWagerPDA } from '../blockchain/config';
 
 export interface Player {
   id: string;
@@ -8,6 +9,16 @@ export interface Player {
   keysCollected: number;
   isReady: boolean;
   joinedAt: Date;
+  hasStaked: boolean;
+}
+
+export interface RoomWager {
+  amount: number;
+  playerOne: string;
+  playerTwo: string | null;
+  gameWagerPDA: string;
+  isActive: boolean;
+  createdAt: Date;
 }
 
 export class GameRoom {
@@ -17,11 +28,26 @@ export class GameRoom {
   private gameState: GameState;
   private maxPlayers: number = 2;
   private gameStarted: boolean = false;
+  private wager: RoomWager | null = null;
+  private unclaimed: Map<string, number> = new Map();
 
-  constructor(roomId: string, io: Server) {
+  constructor(roomId: string, io: Server, wagerAmount?: number) {
     this.id = roomId;
     this.io = io;
     this.gameState = new GameState();
+    
+    // Initialize wager if amount provided
+    if (wagerAmount && wagerAmount > 0) {
+      const [gameWagerPDA] = deriveGameWagerPDA(roomId);
+      this.wager = {
+        amount: wagerAmount,
+        playerOne: '',
+        playerTwo: null,
+        gameWagerPDA: gameWagerPDA.toString(),
+        isActive: true,
+        createdAt: new Date()
+      };
+    }
   }
 
   public addPlayer(playerId: string, walletAddress: string): boolean {
@@ -29,14 +55,23 @@ export class GameRoom {
       return false;
     }
 
+    // TEMP: Allow same wallet for testing
+    console.log(`🧪 TEST MODE: Allowing duplicate wallet ${walletAddress}`);
+
     const player: Player = {
       id: playerId,
       walletAddress,
       position: this.getSpawnPosition(this.players.size),
       keysCollected: 0,
       isReady: false,
-      joinedAt: new Date()
+      joinedAt: new Date(),
+      hasStaked: false
     };
+
+    // Set first player as player one for wager
+    if (this.wager && this.players.size === 0) {
+      this.wager.playerOne = walletAddress;
+    }
 
     this.players.set(playerId, player);
     console.log(`✅ Player ${playerId} added to room ${this.id}`);
@@ -49,7 +84,12 @@ export class GameRoom {
       newPlayer: {
         id: playerId,
         position: player.position
-      }
+      },
+      wager: this.wager ? {
+        amount: this.wager.amount,
+        gameWagerPDA: this.wager.gameWagerPDA,
+        roomId: this.id
+      } : null
     });
 
     // Send existing players to new player
@@ -104,6 +144,12 @@ export class GameRoom {
 
   public startGame(): void {
     if (this.gameStarted || !this.isFull()) {
+      return;
+    }
+
+    // Check if wager game requires both players to stake
+    if (this.wager && !this.allPlayersStaked()) {
+      console.log(`❌ Cannot start game in room ${this.id}: Not all players have staked`);
       return;
     }
 
@@ -250,11 +296,22 @@ export class GameRoom {
 
     console.log(`🏆 Player ${playerId} won in room ${this.id}`);
 
+    // Track unclaimed wager for winner
+    if (this.wager && this.wager.isActive) {
+      this.unclaimed.set(winner.walletAddress, this.wager.amount * 2);
+      console.log(`💰 Unclaimed wager: ${this.wager.amount * 2} GOR for ${winner.walletAddress}`);
+    }
+
     this.io.to(this.id).emit('game_won', {
       winnerId: playerId,
       winnerWallet: winner.walletAddress,
       gameTime: this.gameState.getGameTime(),
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      wager: this.wager ? {
+        amount: this.wager.amount * 2,
+        gameWagerPDA: this.wager.gameWagerPDA,
+        roomId: this.id
+      } : null
     });
 
     this.endGame('Player won');
@@ -322,5 +379,72 @@ export class GameRoom {
         });
       }
     });
+  }
+
+  // Wager-related methods
+  public getWager(): RoomWager | null {
+    return this.wager;
+  }
+
+  public markPlayerStaked(walletAddress: string): void {
+    // TEMP: For testing with same wallet, mark the first unstaked player
+    const player = Array.from(this.players.values()).find(p => p.walletAddress === walletAddress && !p.hasStaked);
+    if (player) {
+      player.hasStaked = true;
+      console.log(`✅ Player ${walletAddress} has staked in room ${this.id}`);
+      
+      // Set player two for wager
+      if (this.wager && this.wager.playerTwo === null && walletAddress !== this.wager.playerOne) {
+        this.wager.playerTwo = walletAddress;
+      }
+    } else {
+      console.log(`❌ No unstaked player found with wallet ${walletAddress}`);
+    }
+  }
+
+  public allPlayersStaked(): boolean {
+    if (!this.wager) return true;
+    
+    return Array.from(this.players.values()).every(player => player.hasStaked);
+  }
+
+
+  public clearUnclaimedWager(walletAddress: string): void {
+    this.unclaimed.delete(walletAddress);
+  }
+
+  public getRoomInfo() {
+    return {
+      id: this.id,
+      playerCount: this.players.size,
+      maxPlayers: this.maxPlayers,
+      gameStarted: this.gameStarted,
+      wager: this.wager ? {
+        amount: this.wager.amount,
+        gameWagerPDA: this.wager.gameWagerPDA,
+        playersStaked: Array.from(this.players.values()).filter(p => p.hasStaked).length
+      } : null
+    };
+  }
+
+  public getUnclaimedWager(walletAddress: string): any | null {
+    const amount = this.unclaimed.get(walletAddress);
+    if (amount) {
+      return {
+        roomId: this.id,
+        amount: amount,
+        gameWagerPDA: this.wager?.gameWagerPDA || null
+      };
+    }
+    return null;
+  }
+
+  public claimWager(walletAddress: string): boolean {
+    if (this.unclaimed.has(walletAddress)) {
+      this.unclaimed.delete(walletAddress);
+      console.log(`✅ Wager claimed for ${walletAddress} in room ${this.id}`);
+      return true;
+    }
+    return false;
   }
 }

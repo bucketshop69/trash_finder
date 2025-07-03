@@ -1562,7 +1562,7 @@ export class MazeScene extends Phaser.Scene {
     // Hide interaction prompt
     this.hideTreasureInteractionPrompt();
     
-    // Show victory screen
+    // Show victory screen (no wager data in local mode)
     this.showVictoryMessage();
     
     console.log(`Game ended! Winner: ${this.winnerId}`);
@@ -1616,11 +1616,11 @@ export class MazeScene extends Phaser.Scene {
     });
   }
 
-  private showVictoryMessage() {
+  private showVictoryMessage(wager?: any) {
     // Victory message
     const victoryText = this.add.text(
-      400, 250,
-      'VICTORY!\nPlayer One Won!',
+      400, 200,
+      '🏆 VICTORY!\nYou Won!',
       {
         fontSize: '32px',
         color: '#27AE60',
@@ -1632,9 +1632,30 @@ export class MazeScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
+    let yOffset = 300;
+
+    // Show wager info if available
+    if (wager && wager.amount) {
+      const wagerText = this.add.text(
+        400, 260,
+        `💰 You Won: ${wager.amount} GOR\nCheck lobby to claim`,
+        {
+          fontSize: '18px',
+          color: '#F39C12',
+          fontFamily: 'Arial',
+          fontStyle: 'bold',
+          align: 'center',
+          backgroundColor: '#2C3E50',
+          padding: { x: 15, y: 8 }
+        }
+      ).setOrigin(0.5);
+
+      yOffset = 340;
+    }
+
     // Back to lobby button
     const lobbyButton = this.add.text(
-      400, 350,
+      400, yOffset,
       'Back to Lobby',
       {
         fontSize: '18px',
@@ -1657,11 +1678,11 @@ export class MazeScene extends Phaser.Scene {
     console.log('Victory screen displayed with lobby button');
   }
 
-  private showDefeatMessage(winnerId: string) {
+  private showDefeatMessage(winnerId: string, wager?: any) {
     // Defeat message
     const defeatText = this.add.text(
-      400, 250,
-      `DEFEAT!\nPlayer ${winnerId.substring(0, 8)}... Won!`,
+      400, 200,
+      `😔 DEFEAT!\nYou Lost!`,
       {
         fontSize: '32px',
         color: '#E74C3C',
@@ -1673,9 +1694,30 @@ export class MazeScene extends Phaser.Scene {
       }
     ).setOrigin(0.5);
 
+    let yOffset = 300;
+
+    // Show wager loss if there was a wager
+    if (wager && wager.amount) {
+      const wagerText = this.add.text(
+        400, 260,
+        `💔 You Lost: ${wager.amount / 2} GOR`,
+        {
+          fontSize: '20px',
+          color: '#E74C3C',
+          fontFamily: 'Arial',
+          fontStyle: 'bold',
+          align: 'center',
+          backgroundColor: '#2C3E50',
+          padding: { x: 15, y: 8 }
+        }
+      ).setOrigin(0.5);
+
+      yOffset = 330;
+    }
+
     // Back to lobby button
     const lobbyButton = this.add.text(
-      400, 350,
+      400, yOffset,
       'Back to Lobby',
       {
         fontSize: '18px',
@@ -1698,6 +1740,7 @@ export class MazeScene extends Phaser.Scene {
     console.log('Defeat screen displayed with lobby button');
   }
 
+
   private returnToLobby() {
     console.log('Returning to lobby...');
     
@@ -1706,8 +1749,8 @@ export class MazeScene extends Phaser.Scene {
     // In a real implementation, this would be:
     // this.scene.start('LobbyScene');
     
-    // Placeholder: Show alert and reload page (simulates going to lobby)
-    alert('Returning to lobby... (placeholder - would go to actual lobby scene)');
+    // Placeholder: Log and reload page (simulates going to lobby)
+    console.log('Returning to lobby... (placeholder - would go to actual lobby scene)');
     window.location.reload();
     
     console.log('Lobby return triggered');
@@ -2272,9 +2315,9 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private handleRemoteTreasureClaim(data: any): void {
-    const { winnerId, winnerWallet } = data;
+    const { winnerId, winnerWallet, wager } = data;
     
-    console.log(`🏆 Remote treasure claimed by: ${winnerId}`);
+    console.log(`🏆 Remote treasure claimed by: ${winnerId}`, data);
     
     // Update game state
     this.isGameEnded = true;
@@ -2289,9 +2332,9 @@ export class MazeScene extends Phaser.Scene {
     
     // Show victory/defeat screen based on who won
     if (winnerId === this.localPlayerId) {
-      this.showVictoryMessage();
+      this.showVictoryMessage(wager);
     } else {
-      this.showDefeatMessage(winnerId);
+      this.showDefeatMessage(winnerId, wager);
     }
     
     console.log(`🏁 Game ended! Winner: ${winnerId}`);

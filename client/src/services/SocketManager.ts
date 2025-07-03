@@ -171,6 +171,61 @@ export class SocketManager {
     });
   }
 
+  // Wager-related methods
+  public createWagerRoom(walletAddress: string, wagerAmount: number): void {
+    if (!this.isConnected || !this.socket) {
+      console.error('❌ Cannot create wager room: not connected to server');
+      return;
+    }
+
+    console.log(`💰 Creating wager room: ${wagerAmount} GOR`);
+    this.socket.emit('create_wager_room', {
+      walletAddress,
+      wagerAmount,
+      timestamp: Date.now()
+    });
+  }
+
+  public notifyPlayerStaked(walletAddress: string, roomId: string): void {
+    if (!this.isConnected || !this.socket) return;
+
+    console.log(`💎 Player staked: ${walletAddress} in room ${roomId}`);
+    this.socket.emit('player_staked', {
+      walletAddress,
+      roomId,
+      timestamp: Date.now()
+    });
+  }
+
+  public getUnclaimedWagers(walletAddress: string): void {
+    if (!this.isConnected || !this.socket) return;
+
+    this.socket.emit('get_unclaimed_wagers', {
+      walletAddress,
+      timestamp: Date.now()
+    });
+  }
+
+  public notifyWagerClaimed(walletAddress: string, roomId: string): void {
+    if (!this.isConnected || !this.socket) return;
+
+    this.socket.emit('wager_claimed', {
+      walletAddress,
+      roomId,
+      timestamp: Date.now()
+    });
+  }
+
+  public getRoomInfo(roomId: string): void {
+    if (!this.isConnected || !this.socket) return;
+
+    console.log(`🔍 Getting room info for: ${roomId}`);
+    this.socket.emit('get_room_info', {
+      roomId,
+      timestamp: Date.now()
+    });
+  }
+
   // Event Listener Setup
   private setupGameEventListeners(): void {
     if (!this.socket) return;
@@ -216,7 +271,8 @@ export class SocketManager {
     });
 
     this.socket.on('game_won', (data) => {
-      console.log('🏆 Game won!', data);
+      console.log('🏆 SOCKET: Game won event received!', data);
+      console.log('🏆 SOCKET: Calling onGameWon callback:', !!this.onGameWon);
       this.onGameWon?.(data);
     });
 
@@ -235,6 +291,31 @@ export class SocketManager {
 
     this.socket.on('treasure_claim_failed', (data) => {
       console.warn('⚠️ Treasure claim failed:', data.reason);
+    });
+
+    // Wager events
+    this.socket.on('wager_room_created', (data) => {
+      console.log('💰 Wager room created:', data);
+    });
+
+    this.socket.on('wager_room_error', (data) => {
+      console.error('❌ Wager room error:', data.message);
+    });
+
+    this.socket.on('player_staked', (data) => {
+      console.log('💎 Player staked:', data);
+    });
+
+    this.socket.on('unclaimed_wagers', (data) => {
+      console.log('💰 Unclaimed wagers:', data);
+    });
+
+    this.socket.on('room_info', (data) => {
+      console.log('🔍 Room info:', data);
+    });
+
+    this.socket.on('room_not_found', (data) => {
+      console.log('❌ Room not found:', data);
     });
   }
 

@@ -1,5 +1,10 @@
 # Gorbagana Game Contracts
 
+## TL;DR
+Anchor-based Solana smart contracts for the Gorbagana Trash Finder game. Handles winner-takes-all wagers, on-chain rewards, and player authentication for 1v1 maze matches.
+
+---
+
 Smart contracts for Gorbagana Trash Finder game on Solana.
 
 ## Tech Stack
@@ -22,7 +27,7 @@ anchor deploy   # Deploy to testnet
 ```
 
 ## Contracts
-- Game entry fee management
-- Winner reward distribution
+- Game entry fee management (stake GOR tokens)
+- Winner reward distribution (claim pot)
 - Token mechanics
-- Player authentication
+- Player authentication and on-chain game state

@@ -11,24 +11,31 @@
     "test": "jest",
     "deploy": "npm run build:prod && railway up"
   },
-  "keywords": ["gorbagana", "multiplayer", "game", "server", "solana"],
+  "keywords": [
+    "gorbagana",
+    "multiplayer",
+    "game",
+    "server",
+    "solana"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "express": "^4.18.2",
-    "socket.io": "^4.7.5",
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/web3.js": "^1.87.6",
     "cors": "^2.8.5",
+    "express": "^4.18.2",
     "redis": "^4.6.12",
-    "@solana/web3.js": "^1.87.6"
+    "socket.io": "^4.7.5"
   },
   "devDependencies": {
-    "@types/express": "^4.17.21",
     "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/jest": "^29.5.11",
     "@types/node": "^20.11.5",
-    "typescript": "^5.3.3",
+    "jest": "^29.7.0",
     "nodemon": "^3.0.3",
     "ts-node": "^10.9.2",
-    "jest": "^29.7.0",
-    "@types/jest": "^29.5.11"
+    "typescript": "^5.3.3"
   }
 }

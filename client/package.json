@@ -12,6 +12,8 @@
     "deploy": "npm run build:prod && vercel --prod"
   },
   "dependencies": {
+    "@coral-xyz/anchor": "^0.31.1",
+    "@solana/web3.js": "^1.98.2",
     "phaser": "^3.90.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
