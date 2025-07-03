@@ -22,21 +22,22 @@ function App() {
     
     // Enable networking and set player role in the game scene
     setTimeout(() => {
-      // @ts-ignore - Access global scene for networking
-      if (window.gameScene) {
+      // Access global scene for networking
+      const gameScene = (window as any).gameScene;
+      if (gameScene) {
         console.log('🌐 Enabling networking for multiplayer game')
         console.log('🎭 Setting player role:', isHost ? 'HOST' : 'JOINER')
         console.log('🔍 isHost value:', isHost)
         
         // Set player role first  
         console.log('🎯 About to call setPlayerRole with isHost:', isHost)
-        if (window.gameScene.setPlayerRole) {
-          window.gameScene.setPlayerRole(isHost)
+        if (gameScene.setPlayerRole) {
+          gameScene.setPlayerRole(isHost)
         }
         
         // Then enable networking
-        if (window.gameScene.enableNetworking) {
-          window.gameScene.enableNetworking()
+        if (gameScene.enableNetworking) {
+          gameScene.enableNetworking()
         }
       }
     }, 500) // Small delay to ensure scene is ready

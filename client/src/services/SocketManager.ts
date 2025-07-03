@@ -55,7 +55,7 @@ export class SocketManager {
         this.socket.on('connect', () => {
           console.log('✅ Connected to game server');
           this.isConnected = true;
-          this.playerId = this.socket!.id;
+          this.playerId = this.socket!.id || null;
           this.onConnectionChange?.(true);
           resolve(true);
         });

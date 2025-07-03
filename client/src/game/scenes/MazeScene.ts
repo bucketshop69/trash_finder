@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MazeGenerator } from '../utils/MazeGenerator';
-import type { RoomState, Door, Key, Treasure, Player, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
+import type { RoomState, Door, Key, Treasure, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
 import { ObjectType, LightingState } from '../../types/GameTypes';
 import { GAME_CONFIG, PLAYER_IDS } from '../config/GameConstants';
 import { socketManager } from '../../services/SocketManager';
@@ -17,7 +17,7 @@ export class MazeScene extends Phaser.Scene {
   private doorGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private keySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private keyGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private treasureGraphics!: Phaser.GameObjects.Graphics;
+  // private treasureGraphics!: Phaser.GameObjects.Graphics; // Unused
   private treasureSprite!: Phaser.GameObjects.Sprite;
   private objectGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private lightingOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
