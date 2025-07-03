@@ -99,7 +99,7 @@ function getProvider(walletAddress: string): AnchorProvider {
 
 function getProgram(walletAddress: string): Program {
   const provider = getProvider(walletAddress);
-  return new Program(GORBAGANA_GAME_IDL as any, GORBAGANA_PROGRAM_ID, provider);
+  return new Program(GORBAGANA_GAME_IDL as any, provider);
 }
 
 // Task 2.2.2: Build initializeWager transaction for hosts

@@ -32,9 +32,9 @@ export class MazeScene extends Phaser.Scene {
   private winnerId: string | null = null;
 
   // Player movement
-  private player1!: Phaser.GameObjects.Graphics;
-  private player2!: Phaser.GameObjects.Graphics;
-  private localPlayer!: Phaser.GameObjects.Graphics;
+  private player1!: Phaser.GameObjects.Sprite;
+  private player2!: Phaser.GameObjects.Sprite;
+  private localPlayer!: Phaser.GameObjects.Sprite;
   private isHost: boolean = false;
   private playerIndex: number = 0; // 0 for host/Player1, 1 for joiner/Player2
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -53,7 +53,7 @@ export class MazeScene extends Phaser.Scene {
   // Network multiplayer state
   private isNetworked: boolean = false;
   private localPlayerId: string | null = null;
-  private remotePlayers: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private remotePlayers: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private lastSentPosition: { x: number, y: number } = { x: 0, y: 0 };
   private positionSendThreshold: number = 5; // Only send if moved > 5 pixels
 
@@ -64,9 +64,11 @@ export class MazeScene extends Phaser.Scene {
   }
 
   preload() {
-    // Create simple colored rectangles for sprites (no external assets needed)
-    this.load.image('player1', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
-    this.load.image('player2', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    // Load player SVG assets
+    this.load.svg('player1', '/src/assets/players/player1.svg');
+    this.load.svg('player2', '/src/assets/players/player2.svg');
+    
+    // Keep key placeholder for now
     this.load.image('key', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
   }
 
@@ -870,13 +872,9 @@ export class MazeScene extends Phaser.Scene {
     const player2Pos = this.mazeGenerator.getSpawnPosition(1, mazeConfig);
 
     if (this.isHost) {
-      // Host controls Player 1 (blue, top-left)
-      this.player1 = this.add.graphics();
-      this.player1.fillStyle(0x3498db, 1); // Blue
-      this.player1.fillCircle(0, 0, 15);
-      this.player1.lineStyle(3, 0xffffff, 1);
-      this.player1.strokeCircle(0, 0, 15);
-      this.player1.setPosition(player1Pos.x, player1Pos.y);
+      // Host controls Player 1 (rainbow character, top-left)
+      this.player1 = this.add.sprite(player1Pos.x, player1Pos.y, 'player1');
+      this.player1.setScale(0.25); // Scale down from 120x140 to 30x35
       this.localPlayer = this.player1;
 
       // Player 1 label
@@ -890,13 +888,9 @@ export class MazeScene extends Phaser.Scene {
 
       console.log(`Host spawned as Player 1 at: ${player1Pos.x}, ${player1Pos.y}`);
     } else {
-      // Joiner controls Player 2 (red, bottom-right)
-      this.player2 = this.add.graphics();
-      this.player2.fillStyle(0xe74c3c, 1); // Red
-      this.player2.fillCircle(0, 0, 15);
-      this.player2.lineStyle(3, 0xffffff, 1);
-      this.player2.strokeCircle(0, 0, 15);
-      this.player2.setPosition(player2Pos.x, player2Pos.y);
+      // Joiner controls Player 2 (rainbow character, bottom-right)
+      this.player2 = this.add.sprite(player2Pos.x, player2Pos.y, 'player2');
+      this.player2.setScale(0.25); // Scale down from 120x140 to 30x35
       this.localPlayer = this.player2;
 
       // Player 2 label  
@@ -1120,7 +1114,7 @@ export class MazeScene extends Phaser.Scene {
     }
   }
 
-  private isValidPosition(x: number, y: number, player?: Phaser.GameObjects.Graphics): boolean {
+  private isValidPosition(x: number, y: number, player?: Phaser.GameObjects.Sprite): boolean {
     const playerRadius = 15;
 
     // 1. Screen boundary check
@@ -1156,7 +1150,7 @@ export class MazeScene extends Phaser.Scene {
     return null;
   }
 
-  private isCollidingWithRoomWalls(x: number, y: number, radius: number, player?: Phaser.GameObjects.Graphics): boolean {
+  private isCollidingWithRoomWalls(x: number, y: number, radius: number, player?: Phaser.GameObjects.Sprite): boolean {
     const playerBounds = { left: x - radius, right: x + radius, top: y - radius, bottom: y + radius };
 
     // Use the specific player's current position, default to player1 for backward compatibility
@@ -2251,10 +2245,11 @@ export class MazeScene extends Phaser.Scene {
     let remotePlayer = this.remotePlayers.get(playerId);
     
     if (!remotePlayer) {
-      // Create new remote player
-      remotePlayer = this.add.graphics();
-      remotePlayer.fillStyle(0x9B59B6, 1); // Purple for remote players
-      remotePlayer.fillCircle(0, 0, 15);
+      // Create new remote player using opposite sprite
+      const spriteKey = this.isHost ? 'player2' : 'player1';
+      remotePlayer = this.add.sprite(position.x, position.y, spriteKey);
+      remotePlayer.setScale(0.25); // Same scale as local players
+      remotePlayer.setTint(0x9B59B6); // Purple tint to distinguish remote player
       this.remotePlayers.set(playerId, remotePlayer);
       
       console.log('👤 Created remote player:', playerId);
