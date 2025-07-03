@@ -43,6 +43,7 @@ export class MazeScene extends Phaser.Scene {
   private spacebar!: Phaser.Input.Keyboard.Key;
   private enterKey!: Phaser.Input.Keyboard.Key;
   private playerSpeed: number = GAME_CONFIG.PLAYER_SPEED;
+  
 
   // Flashlight system
   private flashlightGraphics!: Phaser.GameObjects.Graphics;
