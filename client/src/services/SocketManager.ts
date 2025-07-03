@@ -23,7 +23,7 @@ export interface TreasureClaimData {
 
 export class SocketManager {
   private socket: Socket | null = null;
-  private serverUrl: string = 'http://localhost:3001';
+  private serverUrl: string = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
   private isConnected: boolean = false;
   private playerId: string | null = null;
   private roomId: string | null = null;
@@ -40,6 +40,8 @@ export class SocketManager {
   constructor() {
     // Initialize but don't connect automatically
     console.log('🔌 SocketManager initialized');
+    console.log('🌐 Server URL:', this.serverUrl);
+    console.log('🔧 Environment:', import.meta.env.VITE_ENVIRONMENT || 'development');
   }
 
   // Connection Management
