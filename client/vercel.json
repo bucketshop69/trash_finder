@@ -10,10 +10,4 @@
       "destination": "/index.html"
     }
   ],
-  "env": {
-    "VITE_SERVER_URL": "@vite-server-url",
-    "VITE_SOCKET_URL": "@vite-socket-url",
-    "VITE_GORBAGANA_RPC_URL": "@vite-gorbagana-rpc-url",
-    "VITE_ENVIRONMENT": "production"
-  }
 }
