@@ -1,9 +1,21 @@
-export interface Key {
+export enum TrashType {
+  APPLE_CORE = "apple_core",
+  BANANA_PEEL = "banana_peel", 
+  CARDBOARD_BOX = "cardboard_box",
+  FISH_BONES = "fish_bones",
+  GLASS_BOTTLE = "glass_bottle",
+  MILK_CARTON = "milk_carton",
+  NEWSPAPER = "newspaper",
+  PLASTIC_BOTTLE = "plastic_bottle",
+  SODA_CAN = "soda_can"
+}
+
+export interface Trash {
   id: string;
+  type: TrashType;
   position: { x: number; y: number };
   collected: boolean;
   roomId: string;
-  unlocksDoorsIds: string[];
 }
 
 export interface Room {
@@ -11,8 +23,8 @@ export interface Room {
   position: { x: number; y: number };
   size: { width: number; height: number };
   isLit: boolean;
-  hasKey: boolean;
-  keyId?: string;
+  hasTrash: boolean;
+  trashId?: string;
   playerOccupancy: string[];
 }
 
@@ -20,17 +32,17 @@ export interface Treasure {
   id: string;
   position: { x: number; y: number };
   roomId: string;
-  keysRequired: number;
+  trashRequired: number;
   claimed: boolean;
   claimedBy?: string;
 }
 
 export class GameState {
   private startTime: Date | null = null;
-  private keys: Map<string, Key> = new Map();
+  private trash: Map<string, Trash> = new Map();
   private rooms: Map<string, Room> = new Map();
   private treasure!: Treasure; // Will be initialized in initializeLevel
-  private requiredKeys: number = 3;
+  private requiredTrash: number = 3;
   private gameStarted: boolean = false;
 
   constructor() {
@@ -50,43 +62,56 @@ export class GameState {
     this.updateRoomLighting();
   }
 
-  public canCollectKey(keyId: string, playerPosition: { x: number; y: number }): boolean {
-    const key = this.keys.get(keyId);
-    if (!key || key.collected) {
+  public canCollectTrash(trashId: string, playerPosition: { x: number; y: number }): boolean {
+    console.log(`🔍 Looking for trash: ${trashId}`);
+    console.log(`🔍 Available trash: ${Array.from(this.trash.keys()).join(', ')}`);
+    
+    const trash = this.trash.get(trashId);
+    if (!trash) {
+      console.log(`⚠️ Trash ${trashId} NOT FOUND in map`);
+      return false;
+    }
+    if (trash.collected) {
+      console.log(`⚠️ Trash ${trashId} ALREADY COLLECTED`);
       return false;
     }
 
-    // Check if player is close enough to key (simple distance check)
+    // Check if player is close enough to trash (simple distance check)
     const distance = Math.sqrt(
-      Math.pow(playerPosition.x - key.position.x, 2) +
-      Math.pow(playerPosition.y - key.position.y, 2)
+      Math.pow(playerPosition.x - trash.position.x, 2) +
+      Math.pow(playerPosition.y - trash.position.y, 2)
     );
 
-    return distance < 50; // 50 pixel radius for key collection
+    console.log(`🗑️ Distance check for ${trashId}:`);
+    console.log(`   Player: (${playerPosition.x}, ${playerPosition.y})`);
+    console.log(`   Trash: (${trash.position.x}, ${trash.position.y})`);
+    console.log(`   Distance: ${distance.toFixed(1)} pixels (max: 120)`);
+
+    return distance < 120; // 120 pixel radius for trash collection (increased for easier pickup)
   }
 
-  public collectKey(keyId: string): boolean {
-    const key = this.keys.get(keyId);
-    if (!key || key.collected) {
-      console.log(`⚠️ Key ${keyId} already collected or doesn't exist`);
+  public collectTrash(trashId: string): boolean {
+    const trash = this.trash.get(trashId);
+    if (!trash || trash.collected) {
+      console.log(`⚠️ Trash ${trashId} already collected or doesn't exist`);
       return false;
     }
 
     // Atomic operation - mark as collected immediately to prevent race conditions
-    key.collected = true;
+    trash.collected = true;
     
-    // Turn off lights in the room where key was collected (optional lighting effect)
-    const room = this.rooms.get(key.roomId);
+    // Turn off lights in the room where trash was collected (optional lighting effect)
+    const room = this.rooms.get(trash.roomId);
     if (room) {
       room.isLit = false;
     }
 
-    console.log(`🔒 Key ${keyId} successfully marked as collected (server authority)`);
+    console.log(`🗑️ Trash ${trashId} successfully marked as collected (server authority)`);
     return true;
   }
 
-  public getRequiredKeys(): number {
-    return this.requiredKeys;
+  public getRequiredTrash(): number {
+    return this.requiredTrash;
   }
 
   public getGameTime(): number {
@@ -94,13 +119,13 @@ export class GameState {
     return Math.floor((Date.now() - this.startTime.getTime()) / 1000);
   }
 
-  public canClaimTreasure(playerId: string, playerPosition: { x: number; y: number }, playerKeys: number): boolean {
+  public canClaimTreasure(playerId: string, playerPosition: { x: number; y: number }, playerTrash: number): boolean {
     if (!this.treasure || this.treasure.claimed) {
       return false;
     }
 
-    // Check if player has enough keys
-    if (playerKeys < this.treasure.keysRequired) {
+    // Check if player has enough trash
+    if (playerTrash < this.treasure.trashRequired) {
       return false;
     }
 
@@ -133,10 +158,10 @@ export class GameState {
 
   public getPublicState(): any {
     return {
-      keys: Array.from(this.keys.values()),
+      trash: Array.from(this.trash.values()),
       rooms: Array.from(this.rooms.values()),
       treasure: this.treasure,
-      requiredKeys: this.requiredKeys,
+      requiredTrash: this.requiredTrash,
       gameTime: this.getGameTime(),
       gameStarted: this.gameStarted
     };
@@ -163,30 +188,48 @@ export class GameState {
           position: { x, y },
           size: { width: roomWidth, height: roomHeight },
           isLit: true,
-          hasKey: true, // Every room has a key for now (matches client)
+          hasTrash: false, // Will be set for selected rooms
           playerOccupancy: []
         };
 
-        // Create key for each room (matching client pattern)
-        const keyId = `key_${roomId}`;
-        const key: Key = {
-          id: keyId,
-          position: {
-            x: x + roomWidth / 2,   // Center of room
-            y: y + roomHeight / 2
-          },
-          collected: false,
-          roomId: roomId,
-          unlocksDoorsIds: []
-        };
-
-        this.keys.set(keyId, key);
-        room.keyId = keyId;
         this.rooms.set(roomId, room);
       }
     }
 
-    // Create treasure in center room (room_1_1)
+    // Generate 6 trash items in fixed rooms (for consistency with client)
+    const availableTrashTypes = [
+      TrashType.APPLE_CORE, TrashType.BANANA_PEEL, TrashType.CARDBOARD_BOX,
+      TrashType.FISH_BONES, TrashType.GLASS_BOTTLE, TrashType.MILK_CARTON
+    ];
+    
+    // Use same room selection as client: distribute across grid
+    const selectedRooms = ['room_0_0', 'room_0_1', 'room_0_2', 'room_1_0', 'room_1_1', 'room_1_2'];
+    
+    for (let i = 0; i < 6; i++) {
+      const roomId = selectedRooms[i];
+      const room = this.rooms.get(roomId)!;
+      const trashType = availableTrashTypes[i];
+      
+      // Generate pseudo-random position within room (avoid walls/objects)
+      const margin = 40; // Increased margin to avoid walls
+      const x = room.position.x + margin + Math.random() * (room.size.width - 2 * margin);
+      const y = room.position.y + margin + Math.random() * (room.size.height - 2 * margin);
+      
+      const trashId = `trash_${trashType}_${roomId}`;
+      const trash: Trash = {
+        id: trashId,
+        type: trashType,
+        position: { x, y },
+        collected: false,
+        roomId: roomId
+      };
+
+      this.trash.set(trashId, trash);
+      room.hasTrash = true;
+      room.trashId = trashId;
+    }
+
+    // Create treasure in center room (room_1_1) - still needed for win condition
     const centerRoom = this.rooms.get('room_1_1');
     if (centerRoom) {
       this.treasure = {
@@ -196,13 +239,23 @@ export class GameState {
           y: centerRoom.position.y + centerRoom.size.height / 2
         },
         roomId: 'room_1_1',
-        keysRequired: this.requiredKeys,
+        trashRequired: this.requiredTrash,
         claimed: false
       };
     }
 
-    console.log(`🗝️ Initialized ${this.keys.size} keys in ${this.rooms.size} rooms (3x3 grid)`);
+    console.log(`🗑️ Initialized ${this.trash.size} trash items in ${this.rooms.size} rooms (3x3 grid)`);
+    console.log(`🗑️ Server trash IDs:`, Array.from(this.trash.keys()));
     console.log(`💎 Treasure placed in center room: ${this.treasure?.roomId}`);
+  }
+
+  private shuffleArray<T>(array: T[]): T[] {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
   }
 
   private updateRoomLighting(): void {

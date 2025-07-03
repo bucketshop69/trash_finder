@@ -63,8 +63,8 @@ export class SocketHandler {
         this.handlePlayerMove(socket, data);
       });
 
-      socket.on('collect_key', (data) => {
-        this.handleCollectKey(socket, data);
+      socket.on('collect_trash', (data) => {
+        this.handleCollectTrash(socket, data);
       });
 
       socket.on('claim_treasure', (data) => {
@@ -196,11 +196,11 @@ export class SocketHandler {
     });
   }
 
-  private handleCollectKey(socket: Socket, data: any) {
-    // Find player's room and handle key collection
+  private handleCollectTrash(socket: Socket, data: any) {
+    // Find player's room and handle trash collection
     this.gameRooms.forEach((room) => {
       if (room.hasPlayer(socket.id)) {
-        room.handleKeyCollection(socket.id, data);
+        room.handleTrashCollection(socket.id, data);
       }
     });
   }

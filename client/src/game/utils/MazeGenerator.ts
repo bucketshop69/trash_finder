@@ -1,5 +1,5 @@
-import type { RoomState, Door, Key, Treasure, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig, RoomObject, RoomComplexity, GridPosition } from '../../types/GameTypes';
-import { ObjectType, LightingState } from '../../types/GameTypes';
+import type { RoomState, Door, Trash, Treasure, Position, RoomCoordinates, MazeConfig, MazeData, MazeGeneratorConfig, RoomObject, RoomComplexity, GridPosition } from '../../types/GameTypes';
+import { ObjectType, LightingState, TrashType } from '../../types/GameTypes';
 import { GAME_CONFIG } from '../config/GameConstants';
 
 export class MazeGenerator {
@@ -20,22 +20,22 @@ export class MazeGenerator {
     // Use config to generate dynamic maze data
     const rooms = this.createRoomsFromConfig(config);
     const doors = this.createDoorsFromConfig(config, rooms);
-    const keys = this.createKeysFromConfig(config, rooms);
+    const trash = this.createTrashFromConfig(config, rooms);
     const objects = this.createObjectsFromConfig(config, rooms);
     const treasure = this.createTreasureFromConfig(config, rooms);
 
-    return { rooms, doors, keys, objects, treasure };
+    return { rooms, doors, trash, objects, treasure };
   }
 
   // Keep old method for backward compatibility during refactor
   public generateMaze(): MazeData {
     const rooms = this.createRooms();
     const doors = this.createDoors();
-    const keys = this.createKeys();
+    const trash = this.createTrashItems();
     const objects = this.createObjectsForRoom1();
     const treasure = this.createTreasureForRoom1();
 
-    return { rooms, doors, keys, objects, treasure };
+    return { rooms, doors, trash, objects, treasure };
   }
 
   private createRooms(): RoomState[] {
@@ -49,8 +49,8 @@ export class MazeGenerator {
       position: room1Position,
       isLit: true,
       lightingState: LightingState.BRIGHT, // Start with bright lighting
-      hasKey: true,
-      keyId: 'key_room1',
+      hasTrash: true,
+      trashId: 'trash_room1',
       playerOccupancy: [],
       doors: [], // Will be populated when doors are created
       objects: [] // Will be populated when objects are created
@@ -96,26 +96,43 @@ export class MazeGenerator {
     return doors;
   }
 
-  private createKeys(): Key[] {
-    const keys: Key[] = [];
+  private createTrashItems(): Trash[] {
+    const trashItems: Trash[] = [];
+    const availableTrashTypes = [
+      TrashType.APPLE_CORE, TrashType.BANANA_PEEL, TrashType.CARDBOARD_BOX,
+      TrashType.FISH_BONES, TrashType.GLASS_BOTTLE, TrashType.MILK_CARTON
+    ];
+    
+    // Generate 6 trash items across the 3x3 grid (matching server logic)
+    for (let i = 0; i < 6; i++) {
+      const row = Math.floor(i / 3);
+      const col = i % 3;
+      const roomId = `room_${row}_${col}`;
+      const trashType = availableTrashTypes[i];
+      const trashId = `trash_${trashType}_${roomId}`;
+      
+      // Calculate room position
+      const roomX = col * 200 + 100; // Room width = 200, offset = 100
+      const roomY = row * 150 + 100; // Room height = 150, offset = 100
+      
+      // Generate position within room bounds (similar to server)
+      const margin = 30;
+      const x = roomX + margin + Math.random() * (200 - 2 * margin);
+      const y = roomY + margin + Math.random() * (150 - 2 * margin);
+      
+      const trash: Trash = {
+        id: trashId,
+        type: trashType,
+        position: { x, y },
+        collected: false,
+        roomId: roomId
+      };
 
-    // Only one key in Room1 for testing
-    const room1Position = this.calculateRoom1Position();
-
-    // Place key at grid position (4,4) - center of room1
-    const key: Key = {
-      id: 'key_room1',
-      position: {
-        x: room1Position.x + (4 * this.internalConfig.gridCellSize.width) + 11,  // Grid col 4 + center offset
-        y: room1Position.y + (4 * this.internalConfig.gridCellSize.height) + 8   // Grid row 4 + center offset
-      },
-      collected: false,
-      roomId: 'room1',
-      unlocksDoorsIds: [] // No doors to unlock for now
-    };
-
-    keys.push(key);
-    return keys;
+      trashItems.push(trash);
+      console.log(`🗑️ Generated trash: ${trashId} at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+    }
+    
+    return trashItems;
   }
 
   private calculateRoomPosition(gridX: number, gridY: number): RoomCoordinates {
@@ -186,8 +203,8 @@ export class MazeGenerator {
           position,
           isLit: true,
           lightingState: this.getRandomLightingState(), // Random lighting for variety
-          hasKey: true, // Always have a key for simplicity
-          keyId: `key_${roomId}`,
+          hasTrash: true, // Always have trash for simplicity
+          trashId: `trash_${roomId}`,
           playerOccupancy: [],
           doors: [],
           objects: []
@@ -300,26 +317,43 @@ export class MazeGenerator {
     return doors;
   }
 
-  private createKeysFromConfig(config: MazeConfig, rooms: RoomState[]): Key[] {
-    const keys: Key[] = [];
+  private createTrashFromConfig(config: MazeConfig, rooms: RoomState[]): Trash[] {
+    const trashItems: Trash[] = [];
+    const availableTrashTypes = [
+      TrashType.APPLE_CORE, TrashType.BANANA_PEEL, TrashType.CARDBOARD_BOX,
+      TrashType.FISH_BONES, TrashType.GLASS_BOTTLE, TrashType.MILK_CARTON
+    ];
+    
+    // Generate 6 trash items (matching server logic)
+    for (let i = 0; i < 6; i++) {
+      const row = Math.floor(i / 3);
+      const col = i % 3;
+      const roomId = `room_${row}_${col}`;
+      const trashType = availableTrashTypes[i];
+      const trashId = `trash_${trashType}_${roomId}`;
+      
+      // Calculate room position
+      const roomX = col * config.roomWidth + 100;
+      const roomY = row * config.roomHeight + 100;
+      
+      // Generate position within room bounds (similar to server)
+      const margin = 30;
+      const x = roomX + margin + Math.random() * (config.roomWidth - 2 * margin);
+      const y = roomY + margin + Math.random() * (config.roomHeight - 2 * margin);
+      
+      const trash: Trash = {
+        id: trashId,
+        type: trashType,
+        position: { x, y },
+        collected: false,
+        roomId: roomId
+      };
 
-    rooms.forEach(room => {
-      if (room.hasKey && room.keyId) {
-        const key: Key = {
-          id: room.keyId,
-          position: {
-            x: room.position.x + room.position.width / 2,
-            y: room.position.y + room.position.height / 2
-          },
-          collected: false,
-          roomId: room.id,
-          unlocksDoorsIds: []
-        };
-        keys.push(key);
-      }
-    });
+      trashItems.push(trash);
+      console.log(`🗑️ Generated trash: ${trashId} at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+    }
 
-    return keys;
+    return trashItems;
   }
 
   // Object generation methods
@@ -695,9 +729,12 @@ export class MazeGenerator {
         y: roomPosition.y + roomPosition.height / 2
       },
       roomId: roomId,
-      keysRequired: GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE,
+      trashRequired: GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE, // Reuse same config value
       claimed: false,
       claimedBy: undefined
     };
   }
+
+  // These methods are now handled by the actual implementations above
+  // Left as stubs for compatibility
 }

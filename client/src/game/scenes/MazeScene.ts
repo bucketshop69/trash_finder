@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { MazeGenerator } from '../utils/MazeGenerator';
-import type { RoomState, Door, Key, Treasure, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
+import type { RoomState, Door, Trash, Treasure, MazeConfig, MazeData, RoomObject } from '../../types/GameTypes';
 import { ObjectType, LightingState } from '../../types/GameTypes';
 import { GAME_CONFIG, PLAYER_IDS } from '../config/GameConstants';
 import { socketManager } from '../../services/SocketManager';
@@ -9,32 +9,32 @@ export class MazeScene extends Phaser.Scene {
   private mazeGenerator!: MazeGenerator;
   private rooms: RoomState[] = [];
   private doors: Door[] = [];
-  private keys: Key[] = [];
+  private trash: Trash[] = [];
   private treasure!: Treasure;
   private objects: RoomObject[] = [];
   private players: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private roomGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private doorGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
-  private keySprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
-  private keyGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private trashSprites: Map<string, Phaser.GameObjects.Sprite> = new Map();
+  private trashGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   // private treasureGraphics!: Phaser.GameObjects.Graphics; // Unused
   private treasureSprite!: Phaser.GameObjects.Sprite;
   private objectGraphics: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private lightingOverlays: Map<string, Phaser.GameObjects.Graphics> = new Map();
   private internalDoorStates: Map<string, boolean> = new Map(); // true = open, false = closed
   private doorStates: Map<string, boolean> = new Map(); // true = open, false = closed (for main doors)
-  private collectedKeys: Set<string> = new Set();
-  private highlightedKey: Key | null = null;
-  private activeKeyTween: Phaser.Tweens.Tween | null = null;
+  private collectedTrash: Set<string> = new Set();
+  private highlightedTrash: Trash | null = null;
+  private activeTrashTween: Phaser.Tweens.Tween | null = null;
 
   // Game state tracking
   private isGameEnded: boolean = false;
   private winnerId: string | null = null;
 
   // Player movement
-  private player1!: Phaser.GameObjects.Graphics;
-  private player2!: Phaser.GameObjects.Graphics;
-  private localPlayer!: Phaser.GameObjects.Graphics;
+  private player1!: Phaser.GameObjects.Sprite;
+  private player2!: Phaser.GameObjects.Sprite;
+  private localPlayer!: Phaser.GameObjects.Sprite;
   private isHost: boolean = false;
   private playerIndex: number = 0; // 0 for host/Player1, 1 for joiner/Player2
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
@@ -43,6 +43,7 @@ export class MazeScene extends Phaser.Scene {
   private spacebar!: Phaser.Input.Keyboard.Key;
   private enterKey!: Phaser.Input.Keyboard.Key;
   private playerSpeed: number = GAME_CONFIG.PLAYER_SPEED;
+
 
   // Flashlight system
   private flashlightGraphics!: Phaser.GameObjects.Graphics;
@@ -53,7 +54,7 @@ export class MazeScene extends Phaser.Scene {
   // Network multiplayer state
   private isNetworked: boolean = false;
   private localPlayerId: string | null = null;
-  private remotePlayers: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private remotePlayers: Map<string, Phaser.GameObjects.Sprite> = new Map();
   private lastSentPosition: { x: number, y: number } = { x: 0, y: 0 };
   private positionSendThreshold: number = 5; // Only send if moved > 5 pixels
 
@@ -64,9 +65,19 @@ export class MazeScene extends Phaser.Scene {
   }
 
   preload() {
-    // Create simple colored rectangles for sprites (no external assets needed)
-    this.load.image('player1', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
-    this.load.image('player2', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
+    // Load player SVG assets
+    this.load.svg('player1', '/src/assets/players/player1.svg');
+    this.load.svg('player2', '/src/assets/players/player2.svg');
+
+    // Load trash SVG assets
+    this.load.svg('apple_core', '/src/assets/trash/apple_core.svg');
+    this.load.svg('banana_peel', '/src/assets/trash/banana_peel.svg');
+    this.load.svg('cardboard_box', '/src/assets/trash/cardboard_box.svg');
+    this.load.svg('fish_bones', '/src/assets/trash/fish_bones.svg');
+    this.load.svg('glass_bottle', '/src/assets/trash/glass_bottle.svg');
+    this.load.svg('milk_carton', '/src/assets/trash/milk_carton.svg');
+
+    // Keep key placeholder for collision detection
     this.load.image('key', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');
   }
 
@@ -89,9 +100,12 @@ export class MazeScene extends Phaser.Scene {
 
     this.rooms = mazeData.rooms;
     this.doors = mazeData.doors;
-    this.keys = mazeData.keys;
+    this.trash = mazeData.trash;
     this.treasure = mazeData.treasure;
     this.objects = mazeData.objects;
+
+    // Debug: Log client trash IDs
+    console.log(`🗑️ Client trash IDs:`, this.trash.map(t => t.id));
 
     // DEBUG: Validate all the data
     this.validateGameData();
@@ -102,7 +116,7 @@ export class MazeScene extends Phaser.Scene {
     // Create visual elements
     this.createRooms();
     this.createDoors();
-    this.createKeys();
+    this.createTrash();
     this.createTreasure();
     this.createObjects();
     this.createLightingOverlays();
@@ -110,24 +124,18 @@ export class MazeScene extends Phaser.Scene {
     this.createFlashlight();
 
     // Add title
-    this.add.text(400, 20, 'Gorbagana Trash Finder - 3x3 Multiplayer Maze', {
+    this.add.text(400, 20, 'Gorbagana Trash Finder - Multiplayer Maze', {
       fontSize: '24px',
       color: '#ffffff',
       fontFamily: 'Arial'
     }).setOrigin(0.5);
 
-    // Add instructions
-    this.add.text(400, 550, 'P1: WASD + SPACE | P2: ARROWS + ENTER | L: lighting | F: flashlight | First to collect 3 keys wins!', {
-      fontSize: '12px',
-      color: '#cccccc',
-      fontFamily: 'Arial'
-    }).setOrigin(0.5);
 
     // Set up input controls
     this.setupControls();
 
     // Initialize key counter
-    this.updateKeyCounter();
+    this.updateTrashCounter();
 
     // Set up network multiplayer
     this.setupNetworking();
@@ -140,7 +148,7 @@ export class MazeScene extends Phaser.Scene {
     console.log('=== GAME DATA VALIDATION ===');
     console.log('Rooms:', this.rooms.length, this.rooms);
     console.log('Doors:', this.doors.length, this.doors);
-    console.log('Keys:', this.keys.length, this.keys);
+    console.log('Trash:', this.trash.length, this.trash);
     console.log('Treasure:', this.treasure);
     console.log('Objects:', this.objects.length, this.objects);
 
@@ -149,9 +157,9 @@ export class MazeScene extends Phaser.Scene {
       console.log(`Door ${door.id}: position (${door.position.x}, ${door.position.y}), isOpen: ${door.isOpen}, connects: ${door.connectsRooms.join(' <-> ')}`);
     });
 
-    // Validate keys are positioned correctly
-    this.keys.forEach(key => {
-      console.log(`Key ${key.id}: position (${key.position.x}, ${key.position.y}), collected: ${key.collected}, roomId: ${key.roomId}`);
+    // Validate trash items are positioned correctly
+    this.trash.forEach(trash => {
+      console.log(`Trash ${trash.id}: position (${trash.position.x}, ${trash.position.y}), collected: ${trash.collected}, roomId: ${trash.roomId}`);
     });
 
     // Validate doors
@@ -167,12 +175,12 @@ export class MazeScene extends Phaser.Scene {
 
   private debugGameState() {
     console.log('=== GAME STATE DEBUG ===');
-    console.log('Key graphics created:', this.keyGraphics.size);
-    console.log('Key sprites created:', this.keySprites.size);
-    console.log('Collected keys:', this.collectedKeys.size);
+    console.log('Trash graphics created:', this.trashGraphics.size);
+    console.log('Trash sprites created:', this.trashSprites.size);
+    console.log('Collected trash:', this.collectedTrash.size);
     console.log('Player position:', this.player1?.x, this.player1?.y);
     console.log('Object graphics created:', this.objectGraphics.size);
-    
+
     // Debug object collision bounds
     this.objects.forEach(obj => {
       if (obj.collision) {
@@ -204,7 +212,7 @@ export class MazeScene extends Phaser.Scene {
           align: 'center'
         }).setOrigin(0.5);
       } else {
-        this.add.text(centerX, centerY - 20, room.id.toUpperCase(), {
+        this.add.text(centerX, centerY - 20, "", {
           fontSize: '16px',
           color: '#ffffff',
           fontFamily: 'Arial'
@@ -235,30 +243,30 @@ export class MazeScene extends Phaser.Scene {
     const idParts = room.id.split('_');
     const row = parseInt(idParts[1]) || 0;
     const col = parseInt(idParts[2]) || 0;
-    
+
     // Determine maze boundaries (assuming 3x3 grid from config)
     const maxRow = 2; // 0, 1, 2
     const maxCol = 2; // 0, 1, 2
-    
+
     const isTopRow = row === 0;
     const isBottomRow = row === maxRow;
     const isLeftCol = col === 0;
     const isRightCol = col === maxCol;
 
     return {
-      top: { 
+      top: {
         thickness: isTopRow ? 16 : 12, // Exterior vs Interior
         type: isTopRow ? 'exterior' : 'interior'
       },
-      bottom: { 
+      bottom: {
         thickness: isBottomRow ? 16 : 12,
-        type: isBottomRow ? 'exterior' : 'interior' 
+        type: isBottomRow ? 'exterior' : 'interior'
       },
-      left: { 
+      left: {
         thickness: isLeftCol ? 16 : 12,
         type: isLeftCol ? 'exterior' : 'interior'
       },
-      right: { 
+      right: {
         thickness: isRightCol ? 16 : 12,
         type: isRightCol ? 'exterior' : 'interior'
       }
@@ -328,7 +336,7 @@ export class MazeScene extends Phaser.Scene {
       // Stronger edge highlight for exterior
       graphics.lineStyle(2, 0x4A4A4A, 0.8);
       graphics.lineBetween(x, y, x, y + height); // Left edge highlight
-      
+
       // Additional depth line for exterior
       graphics.lineStyle(1, 0x1A1A1A, 0.6);
       graphics.lineBetween(x + thickness - 1, y, x + thickness - 1, y + height); // Right edge shadow
@@ -354,7 +362,7 @@ export class MazeScene extends Phaser.Scene {
   private drawTiledFloor(graphics: Phaser.GameObjects.Graphics, room: RoomState) {
     const { x, y, width, height } = room.position;
     const tileSize = 22; // 9x9 grid = 198/9 = 22px per tile
-    
+
     // Base floor color
     if (room.id === 'center') {
       graphics.fillStyle(0xf39c12, 0.8); // Golden for treasure room
@@ -362,16 +370,16 @@ export class MazeScene extends Phaser.Scene {
       graphics.fillStyle(0x27ae60, 0.3); // Green for regular rooms
     }
     graphics.fillRect(x, y, width, height);
-    
+
     // Very subtle tile lines (soft)
     graphics.lineStyle(0.5, 0x000000, 0.1); // Very thin, very transparent
-    
+
     // Vertical tile lines
     for (let i = 1; i < 9; i++) {
       const lineX = x + (i * tileSize);
       graphics.lineBetween(lineX, y, lineX, y + height);
     }
-    
+
     // Horizontal tile lines  
     for (let i = 1; i < 9; i++) {
       const lineY = y + (i * tileSize);
@@ -381,7 +389,7 @@ export class MazeScene extends Phaser.Scene {
 
   private drawHorizontalWallWithGaps(graphics: Phaser.GameObjects.Graphics, x: number, y: number, width: number, thickness: number, wallType: string, side: string, room: RoomState) {
     const gaps = this.findGapsInWall(room, side);
-    
+
     if (gaps.length === 0) {
       // No gaps - draw full wall
       this.drawHorizontalWallFace(graphics, x, y, width, thickness, wallType);
@@ -390,18 +398,18 @@ export class MazeScene extends Phaser.Scene {
 
     // Draw wall segments with gaps
     let currentX = x;
-    
+
     gaps.forEach(gap => {
       // Draw wall segment before gap
       if (gap.start > currentX) {
         const segmentWidth = gap.start - currentX;
         this.drawHorizontalWallFace(graphics, currentX, y, segmentWidth, thickness, wallType);
       }
-      
+
       // Skip the gap (don't draw anything)
       currentX = gap.end;
     });
-    
+
     // Draw final wall segment after last gap
     if (currentX < x + width) {
       const segmentWidth = (x + width) - currentX;
@@ -411,7 +419,7 @@ export class MazeScene extends Phaser.Scene {
 
   private drawVerticalWallWithGaps(graphics: Phaser.GameObjects.Graphics, x: number, y: number, thickness: number, height: number, wallType: string, side: string, room: RoomState) {
     const gaps = this.findGapsInWall(room, side);
-    
+
     if (gaps.length === 0) {
       // No gaps - draw full wall
       this.drawVerticalWallEdge(graphics, x, y, thickness, height, wallType);
@@ -420,18 +428,18 @@ export class MazeScene extends Phaser.Scene {
 
     // Draw wall segments with gaps
     let currentY = y;
-    
+
     gaps.forEach(gap => {
       // Draw wall segment before gap
       if (gap.start > currentY) {
         const segmentHeight = gap.start - currentY;
         this.drawVerticalWallEdge(graphics, x, currentY, thickness, segmentHeight, wallType);
       }
-      
+
       // Skip the gap (don't draw anything)
       currentY = gap.end;
     });
-    
+
     // Draw final wall segment after last gap
     if (currentY < y + height) {
       const segmentHeight = (y + height) - currentY;
@@ -439,29 +447,29 @@ export class MazeScene extends Phaser.Scene {
     }
   }
 
-  private findGapsInWall(room: RoomState, side: string): Array<{start: number, end: number}> {
-    const gaps: Array<{start: number, end: number}> = [];
+  private findGapsInWall(room: RoomState, side: string): Array<{ start: number, end: number }> {
+    const gaps: Array<{ start: number, end: number }> = [];
     const gapWidth = 30; // Smaller collision-free space
-    
+
     this.doors.forEach(door => {
       // Only create gaps for doors that connect to this specific room
       if (door.connectsRooms.includes(room.id) && this.isDoorOnRoomSide(door, room, side)) {
         if (side === 'top' || side === 'bottom') {
           // Horizontal gap
           gaps.push({
-            start: door.position.x - gapWidth/2,
-            end: door.position.x + gapWidth/2
+            start: door.position.x - gapWidth / 2,
+            end: door.position.x + gapWidth / 2
           });
         } else {
           // Vertical gap
           gaps.push({
-            start: door.position.y - gapWidth/2,
-            end: door.position.y + gapWidth/2
+            start: door.position.y - gapWidth / 2,
+            end: door.position.y + gapWidth / 2
           });
         }
       }
     });
-    
+
     return gaps;
   }
 
@@ -470,30 +478,30 @@ export class MazeScene extends Phaser.Scene {
     const doorX = door.position.x;
     const doorY = door.position.y;
     const tolerance = 50; // Increased tolerance to catch more doors
-    
+
     // Debug logging
     console.log(`Checking door ${door.id} at (${doorX}, ${doorY}) for room ${room.id} side ${side}`);
     console.log(`Room bounds: x=${x}, y=${y}, width=${width}, height=${height}`);
-    
+
     switch (side) {
       case 'top':
-        const isTopDoor = doorY >= y - tolerance && doorY <= y + tolerance && 
-               doorX >= x - tolerance && doorX <= x + width + tolerance;
+        const isTopDoor = doorY >= y - tolerance && doorY <= y + tolerance &&
+          doorX >= x - tolerance && doorX <= x + width + tolerance;
         console.log(`Top door check: ${isTopDoor}`);
         return isTopDoor;
       case 'bottom':
-        const isBottomDoor = doorY >= y + height - tolerance && doorY <= y + height + tolerance && 
-               doorX >= x - tolerance && doorX <= x + width + tolerance;
+        const isBottomDoor = doorY >= y + height - tolerance && doorY <= y + height + tolerance &&
+          doorX >= x - tolerance && doorX <= x + width + tolerance;
         console.log(`Bottom door check: ${isBottomDoor}`);
         return isBottomDoor;
       case 'left':
-        const isLeftDoor = doorX >= x - tolerance && doorX <= x + tolerance && 
-               doorY >= y - tolerance && doorY <= y + height + tolerance;
+        const isLeftDoor = doorX >= x - tolerance && doorX <= x + tolerance &&
+          doorY >= y - tolerance && doorY <= y + height + tolerance;
         console.log(`Left door check: ${isLeftDoor}`);
         return isLeftDoor;
       case 'right':
-        const isRightDoor = doorX >= x + width - tolerance && doorX <= x + width + tolerance && 
-               doorY >= y - tolerance && doorY <= y + height + tolerance;
+        const isRightDoor = doorX >= x + width - tolerance && doorX <= x + width + tolerance &&
+          doorY >= y - tolerance && doorY <= y + height + tolerance;
         console.log(`Right door check: ${isRightDoor}`);
         return isRightDoor;
       default:
@@ -510,29 +518,23 @@ export class MazeScene extends Phaser.Scene {
   }
 
 
-  private createKeys() {
-    this.keys.forEach(key => {
-      if (!key.collected) {
-        // Create key graphics - just the emoji, no circle background
+  private createTrash() {
+    this.trash.forEach(trash => {
+      if (!trash.collected) {
+        // Create trash sprite using the loaded SVG
+        const trashSprite = this.add.sprite(trash.position.x, trash.position.y, trash.type);
+        trashSprite.setScale(0.8); // Scale down from 32x32 to ~26x26
+        trashSprite.setData('trashId', trash.id);
+        trashSprite.setData('trashType', trash.type);
+
+        // Store for collision detection and visibility control
+        this.trashSprites.set(trash.id, trashSprite);
+
+        // Create graphics placeholder for compatibility
         const graphics = this.add.graphics();
-        // Remove the yellow circle - key is just the emoji now
+        this.trashGraphics.set(trash.id, graphics);
 
-        // Add key label
-        const keyText = this.add.text(key.position.x, key.position.y, '🗝️', {
-          fontSize: '20px',
-          fontFamily: 'Arial'
-        }).setOrigin(0.5);
-
-        // Store graphics for visibility control
-        this.keyGraphics.set(key.id, graphics);
-        this.keyGraphics.set(`${key.id}_text`, keyText as any);
-
-        // Store as sprite equivalent for collision detection
-        const keySprite = this.add.sprite(key.position.x, key.position.y, 'key');
-        keySprite.setVisible(false); // Use graphics instead
-        keySprite.setData('keyId', key.id);
-
-        this.keySprites.set(key.id, keySprite);
+        console.log(`✅ Created trash: ${trash.type} at (${trash.position.x}, ${trash.position.y})`);
       }
     });
   }
@@ -542,7 +544,7 @@ export class MazeScene extends Phaser.Scene {
 
     const treasureX = this.treasure.position.x;
     const treasureY = this.treasure.position.y;
-    
+
     // Just a simple trash can emoji - half the size
     this.add.text(treasureX, treasureY, '🗑️', {
       fontSize: '16px',
@@ -560,7 +562,7 @@ export class MazeScene extends Phaser.Scene {
   private createObjects() {
     this.objects.forEach(obj => {
       const graphics = this.add.graphics();
-      
+
       // Calculate screen position from grid position
       const room = this.rooms.find(r => r.id === obj.roomId);
       if (!room) {
@@ -571,7 +573,7 @@ export class MazeScene extends Phaser.Scene {
       // Grid cell size - use generator config
       const gridCellWidth = 22;  // From MazeGenerator config
       const gridCellHeight = 16; // From MazeGenerator config
-      
+
       const screenX = room.position.x + (obj.gridPosition.col * gridCellWidth);
       const screenY = room.position.y + (obj.gridPosition.row * gridCellHeight);
       const objectWidth = obj.size.width * gridCellWidth;
@@ -586,7 +588,7 @@ export class MazeScene extends Phaser.Scene {
       }
 
       // Add object label for debugging
-      this.add.text(screenX + objectWidth/2, screenY + objectHeight/2, this.getObjectEmoji(obj.type), {
+      this.add.text(screenX + objectWidth / 2, screenY + objectHeight / 2, this.getObjectEmoji(obj.type), {
         fontSize: '12px',
         fontFamily: 'Arial'
       }).setOrigin(0.5);
@@ -654,7 +656,7 @@ export class MazeScene extends Phaser.Scene {
         // Add some "text" lines
         graphics.lineStyle(1, 0x95A5A6, 0.7);
         for (let i = 1; i <= 3; i++) {
-          graphics.lineBetween(x + 2, y + (height/4) * i, x + width - 2, y + (height/4) * i);
+          graphics.lineBetween(x + 2, y + (height / 4) * i, x + width - 2, y + (height / 4) * i);
         }
         break;
 
@@ -670,10 +672,10 @@ export class MazeScene extends Phaser.Scene {
 
       case ObjectType.WALL_SEGMENT:
         // Internal walls using mixed perspective system with internal hierarchy
-        if (width > height) { 
+        if (width > height) {
           // Horizontal internal wall - full face view (elevation) - use internal style
           this.drawHorizontalWallFace(graphics, x, y, width, height, 'internal');
-        } else { 
+        } else {
           // Vertical internal wall - edge view (plan) - use internal style  
           this.drawVerticalWallEdge(graphics, x, y, width, height, 'internal');
         }
@@ -687,7 +689,7 @@ export class MazeScene extends Phaser.Scene {
         graphics.strokeRect(x, y, width, height);
         // Add door handle
         graphics.fillStyle(0xF1C40F, 1);
-        graphics.fillCircle(x + width - 4, y + height/2, 2);
+        graphics.fillCircle(x + width - 4, y + height / 2, 2);
         break;
 
       default:
@@ -721,10 +723,10 @@ export class MazeScene extends Phaser.Scene {
   private createLightingOverlays() {
     this.rooms.forEach(room => {
       const overlay = this.add.graphics();
-      
+
       // Create lighting overlay based on room's lighting state
       this.updateRoomLighting(room.id, room.lightingState);
-      
+
       this.lightingOverlays.set(room.id, overlay);
     });
   }
@@ -732,7 +734,7 @@ export class MazeScene extends Phaser.Scene {
   private updateRoomLighting(roomId: string, lightingState: LightingState) {
     const room = this.rooms.find(r => r.id === roomId);
     const overlay = this.lightingOverlays.get(roomId);
-    
+
     if (!room || !overlay) return;
 
     // Clear previous lighting
@@ -742,13 +744,13 @@ export class MazeScene extends Phaser.Scene {
       case LightingState.BRIGHT:
         // No overlay - full visibility
         break;
-        
+
       case LightingState.DIM:
         // Semi-transparent dark overlay
         overlay.fillStyle(0x000000, 0.3);
         overlay.fillRect(room.position.x, room.position.y, room.position.width, room.position.height);
         break;
-        
+
       case LightingState.DARK:
         // Create mask for visibility
         this.createDarkRoomMask(room, overlay);
@@ -789,14 +791,14 @@ export class MazeScene extends Phaser.Scene {
 
     // Calculate flashlight direction angle
     const directionAngle = Math.atan2(this.playerDirection.y, this.playerDirection.x);
-    
+
     // Create cone mask points
     const conePoints: number[] = [];
     conePoints.push(playerX, playerY);
-    
+
     const steps = 12;
     for (let i = 0; i <= steps; i++) {
-      const angle = directionAngle - coneAngle/2 + (coneAngle * i / steps);
+      const angle = directionAngle - coneAngle / 2 + (coneAngle * i / steps);
       const x = playerX + Math.cos(angle) * flashlightRange;
       const y = playerY + Math.sin(angle) * flashlightRange;
       conePoints.push(x, y);
@@ -809,23 +811,23 @@ export class MazeScene extends Phaser.Scene {
     // Bright center
     const centerPoints: number[] = [];
     centerPoints.push(playerX, playerY);
-    
+
     const narrowConeAngle = Math.PI / 6; // 30 degrees
     for (let i = 0; i <= 6; i++) {
-      const angle = directionAngle - narrowConeAngle/2 + (narrowConeAngle * i / 6);
+      const angle = directionAngle - narrowConeAngle / 2 + (narrowConeAngle * i / 6);
       const x = playerX + Math.cos(angle) * (flashlightRange * 0.7);
       const y = playerY + Math.sin(angle) * (flashlightRange * 0.7);
       centerPoints.push(x, y);
     }
-    
+
     overlay.fillStyle(0x000000, 0.1); // Very light in center
     overlay.fillPoints(centerPoints, true);
 
     // Bright core around player
     overlay.fillStyle(0x000000, 0.0); // Fully illuminated core
     overlay.fillCircle(
-      playerX + Math.cos(directionAngle) * 20, 
-      playerY + Math.sin(directionAngle) * 20, 
+      playerX + Math.cos(directionAngle) * 20,
+      playerY + Math.sin(directionAngle) * 20,
       20
     );
   }
@@ -835,10 +837,10 @@ export class MazeScene extends Phaser.Scene {
     const room = this.rooms.find(r => r.id === roomId);
     if (!room) return false;
 
-    return this.player1.x >= room.position.x && 
-           this.player1.x <= room.position.x + room.position.width &&
-           this.player1.y >= room.position.y && 
-           this.player1.y <= room.position.y + room.position.height;
+    return this.player1.x >= room.position.x &&
+      this.player1.x <= room.position.x + room.position.width &&
+      this.player1.y >= room.position.y &&
+      this.player1.y <= room.position.y + room.position.height;
   }
 
   private getLightingEmoji(state: LightingState): string {
@@ -857,7 +859,7 @@ export class MazeScene extends Phaser.Scene {
       // Player already created, skip
       return;
     }
-    
+
     // Get spawn positions for both players
     const mazeConfig = {
       rows: 3,
@@ -865,18 +867,14 @@ export class MazeScene extends Phaser.Scene {
       roomWidth: 200,
       roomHeight: 150
     };
-    
+
     const player1Pos = this.mazeGenerator.getSpawnPosition(0, mazeConfig);
     const player2Pos = this.mazeGenerator.getSpawnPosition(1, mazeConfig);
 
     if (this.isHost) {
-      // Host controls Player 1 (blue, top-left)
-      this.player1 = this.add.graphics();
-      this.player1.fillStyle(0x3498db, 1); // Blue
-      this.player1.fillCircle(0, 0, 15);
-      this.player1.lineStyle(3, 0xffffff, 1);
-      this.player1.strokeCircle(0, 0, 15);
-      this.player1.setPosition(player1Pos.x, player1Pos.y);
+      // Host controls Player 1 (rainbow character, top-left)
+      this.player1 = this.add.sprite(player1Pos.x, player1Pos.y, 'player1');
+      this.player1.setScale(0.25); // Scale down from 120x140 to 30x35
       this.localPlayer = this.player1;
 
       // Player 1 label
@@ -890,13 +888,9 @@ export class MazeScene extends Phaser.Scene {
 
       console.log(`Host spawned as Player 1 at: ${player1Pos.x}, ${player1Pos.y}`);
     } else {
-      // Joiner controls Player 2 (red, bottom-right)
-      this.player2 = this.add.graphics();
-      this.player2.fillStyle(0xe74c3c, 1); // Red
-      this.player2.fillCircle(0, 0, 15);
-      this.player2.lineStyle(3, 0xffffff, 1);
-      this.player2.strokeCircle(0, 0, 15);
-      this.player2.setPosition(player2Pos.x, player2Pos.y);
+      // Joiner controls Player 2 (rainbow character, bottom-right)
+      this.player2 = this.add.sprite(player2Pos.x, player2Pos.y, 'player2');
+      this.player2.setScale(0.25); // Scale down from 120x140 to 30x35
       this.localPlayer = this.player2;
 
       // Player 2 label  
@@ -931,7 +925,7 @@ export class MazeScene extends Phaser.Scene {
     if (this.isGameEnded) return; // Disable when game is over
     this.flashlightEnabled = !this.flashlightEnabled;
     console.log(`Flashlight ${this.flashlightEnabled ? 'ON' : 'OFF'}`);
-    
+
     if (!this.flashlightEnabled) {
       this.flashlightGraphics.clear();
     }
@@ -940,18 +934,18 @@ export class MazeScene extends Phaser.Scene {
   private updateFlashlight() {
     // Clear any old flashlight graphics (we now use mask system)
     this.flashlightGraphics.clear();
-    
+
     // The flashlight effect is now handled in updateDynamicLighting()
     // through the mask system which properly reveals objects
   }
 
   private getCurrentPlayerRoom(): RoomState | null {
     if (!this.player1) return null;
-    
-    return this.rooms.find(room => 
-      this.player1.x >= room.position.x && 
+
+    return this.rooms.find(room =>
+      this.player1.x >= room.position.x &&
       this.player1.x <= room.position.x + room.position.width &&
-      this.player1.y >= room.position.y && 
+      this.player1.y >= room.position.y &&
       this.player1.y <= room.position.y + room.position.height
     ) || null;
   }
@@ -966,10 +960,10 @@ export class MazeScene extends Phaser.Scene {
 
     // Add spacebar for Player 1 key collection
     this.spacebar = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE);
-    
+
     // Add Enter key for Player 2 key collection
     this.enterKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.ENTER);
-    
+
     // Add L key for cycling lighting states (for testing)
     const lKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.L);
     lKey.on('down', () => this.cycleLighting());
@@ -986,7 +980,7 @@ export class MazeScene extends Phaser.Scene {
 
   update() {
     this.handlePlayerMovement();
-    this.updateKeyInteraction();
+    this.updateTrashInteraction();
     this.updateTreasureInteraction();
     this.updateObjectInteraction();
     this.updateDynamicLighting();
@@ -995,7 +989,7 @@ export class MazeScene extends Phaser.Scene {
 
   private handlePlayerMovement() {
     if (!this.localPlayer || this.isGameEnded) return;
-    
+
     // Handle local player movement (always WASD for current player)
     this.handleLocalPlayerMovement();
   }
@@ -1031,11 +1025,11 @@ export class MazeScene extends Phaser.Scene {
       // Check if the new position is valid (no collision)
       if (this.isValidPosition(newX, newY, this.localPlayer)) {
         this.localPlayer.setPosition(newX, newY);
-        
+
         // Update player direction for flashlight
         this.updatePlayerDirection(velocityX, velocityY);
         this.lastMovement = { x: velocityX, y: velocityY };
-        
+
         // Send position to server if networked
         this.sendPlayerPositionIfNeeded(newX, newY);
       }
@@ -1074,11 +1068,11 @@ export class MazeScene extends Phaser.Scene {
       // Check if the new position is valid (no collision)
       if (this.isValidPosition(newX, newY, this.player1)) {
         this.player1.setPosition(newX, newY);
-        
+
         // Update player direction for flashlight
         this.updatePlayerDirection(velocityX, velocityY);
         this.lastMovement = { x: velocityX, y: velocityY };
-        
+
         // Send position to server if networked
         this.sendPlayerPositionIfNeeded(newX, newY);
       }
@@ -1120,7 +1114,7 @@ export class MazeScene extends Phaser.Scene {
     }
   }
 
-  private isValidPosition(x: number, y: number, player?: Phaser.GameObjects.Graphics): boolean {
+  private isValidPosition(x: number, y: number, player?: Phaser.GameObjects.Sprite): boolean {
     const playerRadius = 15;
 
     // 1. Screen boundary check
@@ -1156,7 +1150,7 @@ export class MazeScene extends Phaser.Scene {
     return null;
   }
 
-  private isCollidingWithRoomWalls(x: number, y: number, radius: number, player?: Phaser.GameObjects.Graphics): boolean {
+  private isCollidingWithRoomWalls(x: number, y: number, radius: number, player?: Phaser.GameObjects.Sprite): boolean {
     const playerBounds = { left: x - radius, right: x + radius, top: y - radius, bottom: y + radius };
 
     // Use the specific player's current position, default to player1 for backward compatibility
@@ -1205,7 +1199,7 @@ export class MazeScene extends Phaser.Scene {
     for (const door of this.doors) {
       // Use our new door state system instead of door.isOpen
       const isDoorOpen = this.doorStates.get(door.id) || false;
-      
+
       if (!isDoorOpen) {
         const doorBounds = this.getDoorBounds(door, 0);
 
@@ -1266,9 +1260,9 @@ export class MazeScene extends Phaser.Scene {
 
       // Check if player overlaps with object
       if (!(playerBounds.right < objBounds.left ||
-            playerBounds.left > objBounds.right ||
-            playerBounds.bottom < objBounds.top ||
-            playerBounds.top > objBounds.bottom)) {
+        playerBounds.left > objBounds.right ||
+        playerBounds.bottom < objBounds.top ||
+        playerBounds.top > objBounds.bottom)) {
         return true; // Collision detected
       }
     }
@@ -1284,7 +1278,7 @@ export class MazeScene extends Phaser.Scene {
     // Convert grid position to screen coordinates
     const gridCellWidth = 22;  // From MazeGenerator config
     const gridCellHeight = 16; // From MazeGenerator config
-    
+
     const screenX = room.position.x + (obj.gridPosition.col * gridCellWidth);
     const screenY = room.position.y + (obj.gridPosition.row * gridCellHeight);
     const objectWidth = obj.size.width * gridCellWidth;
@@ -1324,16 +1318,16 @@ export class MazeScene extends Phaser.Scene {
       }
       this.updateRoomLighting(room.id, room.lightingState);
     });
-    
+
     console.log('Lighting cycled! Press L to cycle again.');
   }
 
-  private updateKeyInteraction() {
+  private updateTrashInteraction() {
     if ((!this.player1 && !this.player2) || this.isGameEnded) return;
 
-    const interactionDistance = GAME_CONFIG.KEY_INTERACTION_DISTANCE;
+    const interactionDistance = GAME_CONFIG.KEY_INTERACTION_DISTANCE; // Reuse same distance
 
-    let closestKey: Key | null = null;
+    let closestTrash: Trash | null = null;
     let minDistance = Infinity;
 
     // Check proximity for both players
@@ -1342,55 +1336,55 @@ export class MazeScene extends Phaser.Scene {
       { player: this.player2, key: this.enterKey, name: 'Player2' }
     ].filter(p => p.player); // Only include existing players
 
-    // Find the closest uncollected key to any player
-    for (const key of this.keys) {
-      if (!this.collectedKeys.has(key.id)) {
+    // Find the closest uncollected trash to any player
+    for (const trash of this.trash) {
+      if (!this.collectedTrash.has(trash.id)) {
         for (const playerData of players) {
           const distance = Phaser.Math.Distance.Between(
-            playerData.player.x, 
-            playerData.player.y, 
-            key.position.x, 
-            key.position.y
+            playerData.player.x,
+            playerData.player.y,
+            trash.position.x,
+            trash.position.y
           );
           if (distance < minDistance) {
             minDistance = distance;
-            closestKey = key;
+            closestTrash = trash;
           }
         }
       }
     }
 
-    // If the closest key is within interaction range, highlight it.
-    if (closestKey && minDistance <= interactionDistance) {
-      if (this.highlightedKey !== closestKey) {
-        this.highlightKey(closestKey);
+    // If the closest trash is within interaction range, highlight it.
+    if (closestTrash && minDistance <= interactionDistance) {
+      if (this.highlightedTrash !== closestTrash) {
+        this.highlightTrash(closestTrash);
       }
     } else {
-      // If no key is close enough, stop highlighting.
-      this.unhighlightKey();
+      // If no trash is close enough, stop highlighting.
+      this.unhighlightTrash();
     }
 
-    // Check for spacebar (Player 1) or enter (Player 2) press to collect the highlighted key
-    if (this.highlightedKey && (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey))) {
+    // Check for spacebar (Player 1) or enter (Player 2) press to collect the highlighted trash
+    if (this.highlightedTrash && (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey))) {
       const keyPressed = Phaser.Input.Keyboard.JustDown(this.spacebar) ? "SPACE" : "ENTER";
-      console.log(`${keyPressed} pressed`, this.highlightedKey.id);
+      console.log(`${keyPressed} pressed`, this.highlightedTrash.id);
 
-      this.attemptKeyCollection(this.highlightedKey);
+      this.attemptTrashCollection(this.highlightedTrash);
     }
   }
 
-  private highlightKey(key: Key) {
-    this.unhighlightKey(); // Stop any previous highlight
+  private highlightTrash(trash: Trash) {
+    this.unhighlightTrash(); // Stop any previous highlight
 
-    this.highlightedKey = key;
-    const keyGraphics = this.keyGraphics.get(key.id);
-    const keyText = this.keyGraphics.get(`${key.id}_text`);
+    this.highlightedTrash = trash;
+    const trashSprite = this.trashSprites.get(trash.id);
 
-    if (keyGraphics && keyText) {
-      // Create a tween that fades the key and its icon in and out
-      this.activeKeyTween = this.tweens.add({
-        targets: [keyGraphics, keyText],
-        alpha: 0.5,
+    if (trashSprite) {
+      // Create a tween that pulses the trash sprite scale
+      this.activeTrashTween = this.tweens.add({
+        targets: trashSprite,
+        scaleX: 1.0,
+        scaleY: 1.0,
         duration: 600,
         ease: 'Sine.easeInOut',
         yoyo: true,
@@ -1399,69 +1393,65 @@ export class MazeScene extends Phaser.Scene {
     }
   }
 
-  private unhighlightKey() {
-    if (this.highlightedKey) {
-      const keyGraphics = this.keyGraphics.get(this.highlightedKey.id);
-      const keyText = this.keyGraphics.get(`${this.highlightedKey.id}_text`);
+  private unhighlightTrash() {
+    if (this.highlightedTrash) {
+      const trashSprite = this.trashSprites.get(this.highlightedTrash.id);
 
-      // Stop the tween and reset alpha
-      if (this.activeKeyTween) {
-        this.activeKeyTween.stop();
-        this.activeKeyTween = null;
+      // Stop the tween and reset scale
+      if (this.activeTrashTween) {
+        this.activeTrashTween.stop();
+        this.activeTrashTween = null;
       }
 
-      if (keyGraphics && keyText) {
-        keyGraphics.setAlpha(1);
-        keyText.setAlpha(1);
+      if (trashSprite) {
+        trashSprite.setScale(0.8); // Reset to original scale
       }
 
-      this.highlightedKey = null;
+      this.highlightedTrash = null;
     }
   }
 
-  private collectKey(keyId: string) {
-    console.log(`Attempting to collect key: ${keyId}`); // For debugging
+  private collectTrash(trashId: string) {
+    console.log(`Attempting to collect trash: ${trashId}`); // For debugging
 
-    // Stop the active tween if it exists for the collected key.
-    if (this.activeKeyTween && this.highlightedKey?.id === keyId) {
-      this.activeKeyTween.stop();
-      this.activeKeyTween = null;
+    // Stop the active tween if it exists for the collected trash.
+    if (this.activeTrashTween && this.highlightedTrash?.id === trashId) {
+      this.activeTrashTween.stop();
+      this.activeTrashTween = null;
     }
 
     // Update the game state.
-    this.collectedKeys.add(keyId);
-    const key = this.keys.find(k => k.id === keyId);
-    if (!key) {
-      console.error(`Could not find key ${keyId} to collect.`);
+    this.collectedTrash.add(trashId);
+    const trash = this.trash.find(t => t.id === trashId);
+    if (!trash) {
+      console.error(`Could not find trash ${trashId} to collect.`);
       return;
     }
-    key.collected = true;
+    trash.collected = true;
 
-    // Destroy the key's visual components.
-    const keyGraphics = this.keyGraphics.get(keyId);
-    if (keyGraphics) {
-      keyGraphics.destroy();
-      this.keyGraphics.delete(keyId);
+    // Destroy the trash's visual components.
+    const trashGraphics = this.trashGraphics.get(trashId);
+    if (trashGraphics) {
+      trashGraphics.destroy();
+      this.trashGraphics.delete(trashId);
     }
-    const keyText = this.keyGraphics.get(`${keyId}_text`);
-    if (keyText) {
-      keyText.destroy();
-      this.keyGraphics.delete(`${keyId}_text`);
+    const trashText = this.trashGraphics.get(`${trashId}_text`);
+    if (trashText) {
+      trashText.destroy();
+      this.trashGraphics.delete(`${trashId}_text`);
     }
 
-    // Unlock associated doors.
-    for (const doorId of key.unlocksDoorsIds) {
-      this.unlockDoor(doorId);
-    }
+    // No door unlocking for trash items
+    // Trash items don't unlock doors
 
     // Update the UI and provide feedback.
-    this.updateKeyCounter();
-    this.showKeyCollectionFeedback(key.position.x, key.position.y, keyId);
+    this.updateTrashCounter();
+    this.showTrashCollectionFeedback(trash.position.x, trash.position.y, trashId);
 
-    // Clear the highlight state as the key is now gone.
-    this.highlightedKey = null;
+    // Clear the highlight state as the trash is now gone.
+    this.highlightedTrash = null;
 
-    console.log(`Successfully collected key: ${keyId}`);
+    console.log(`Successfully collected trash: ${trashId}`);
   }
 
   private updateTreasureInteraction() {
@@ -1475,7 +1465,7 @@ export class MazeScene extends Phaser.Scene {
 
     for (const player of players) {
       const distance = Phaser.Math.Distance.Between(
-        player.x, player.y, 
+        player.x, player.y,
         this.treasure.position.x, this.treasure.position.y
       );
 
@@ -1488,7 +1478,7 @@ export class MazeScene extends Phaser.Scene {
     // Check if any player is close enough to treasure
     if (isAnyPlayerNear) {
       this.showTreasureInteractionPrompt();
-      
+
       // Check for spacebar (Player 1) or enter (Player 2) press to claim treasure
       if (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         this.attemptTreasureClaim();
@@ -1527,44 +1517,44 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private attemptTreasureClaim() {
-    console.log(`Attempting to claim treasure. Player has ${this.collectedKeys.size} keys, needs ${this.treasure.keysRequired}`);
-    
+    console.log(`Attempting to claim treasure. Player has ${this.collectedTrash.size} trash, needs ${this.treasure.trashRequired}`);
+
     if (this.isNetworked && socketManager.getConnectionStatus()) {
       // Networked mode: Send to server for validation
       console.log('🌐 Sending treasure claim to server');
       const playerPos = this.player1 ? { x: this.player1.x, y: this.player1.y } : { x: 0, y: 0 };
       socketManager.sendTreasureClaim({
         position: playerPos,
-        keysCollected: this.collectedKeys.size
+        trashCollected: this.collectedTrash.size
       });
     } else {
       // Local mode: Handle immediately
       console.log('🏠 Local treasure claim attempt');
-      if (this.collectedKeys.size >= this.treasure.keysRequired) {
+      if (this.collectedTrash.size >= this.treasure.trashRequired) {
         this.claimTreasureLocally();
       } else {
-        this.showInsufficientKeysFeedback();
+        this.showInsufficientTrashFeedback();
       }
     }
   }
 
   private claimTreasureLocally() {
     console.log('Treasure claimed locally! Player wins!');
-    
+
     // Update game state
     this.isGameEnded = true;
     this.winnerId = PLAYER_IDS.PLAYER_ONE; // Single player for now
-    
+
     // Mark treasure as claimed
     this.treasure.claimed = true;
     this.treasure.claimedBy = this.winnerId;
-    
+
     // Hide interaction prompt
     this.hideTreasureInteractionPrompt();
-    
+
     // Show victory screen (no wager data in local mode)
     this.showVictoryMessage();
-    
+
     console.log(`Game ended! Winner: ${this.winnerId}`);
   }
 
@@ -1581,20 +1571,20 @@ export class MazeScene extends Phaser.Scene {
     return {
       isEnded: this.isGameEnded,
       winnerId: this.winnerId,
-      keysCollected: this.collectedKeys.size,
-      keysRequired: this.treasure?.keysRequired || GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE,
+      trashCollected: this.collectedTrash.size,
+      trashRequired: this.treasure?.trashRequired || GAME_CONFIG.KEYS_REQUIRED_FOR_TREASURE,
       treasureClaimed: this.treasure?.claimed || false
     };
   }
 
-  private showInsufficientKeysFeedback() {
+  private showInsufficientTrashFeedback() {
     const treasureX = this.treasure.position.x;
     const treasureY = this.treasure.position.y;
-    
+
     const feedbackText = this.add.text(
       treasureX,
       treasureY + 20,
-      `Need ${this.treasure.keysRequired} keys! You have ${this.collectedKeys.size}`,
+      `Need ${this.treasure.trashRequired} trash! You have ${this.collectedTrash.size}`,
       {
         fontSize: '12px',
         color: '#E74C3C',
@@ -1666,14 +1656,14 @@ export class MazeScene extends Phaser.Scene {
         padding: { x: 15, y: 8 }
       }
     ).setOrigin(0.5)
-     .setInteractive({ useHandCursor: true })
-     .on('pointerdown', () => this.returnToLobby())
-     .on('pointerover', () => {
-       lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
-     })
-     .on('pointerout', () => {
-       lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
-     });
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.returnToLobby())
+      .on('pointerover', () => {
+        lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
+      })
+      .on('pointerout', () => {
+        lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
+      });
 
     console.log('Victory screen displayed with lobby button');
   }
@@ -1728,14 +1718,14 @@ export class MazeScene extends Phaser.Scene {
         padding: { x: 15, y: 8 }
       }
     ).setOrigin(0.5)
-     .setInteractive({ useHandCursor: true })
-     .on('pointerdown', () => this.returnToLobby())
-     .on('pointerover', () => {
-       lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
-     })
-     .on('pointerout', () => {
-       lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
-     });
+      .setInteractive({ useHandCursor: true })
+      .on('pointerdown', () => this.returnToLobby())
+      .on('pointerover', () => {
+        lobbyButton.setStyle({ color: '#E74C3C' }); // Red on hover
+      })
+      .on('pointerout', () => {
+        lobbyButton.setStyle({ color: '#3498DB' }); // Blue default
+      });
 
     console.log('Defeat screen displayed with lobby button');
   }
@@ -1743,16 +1733,16 @@ export class MazeScene extends Phaser.Scene {
 
   private returnToLobby() {
     console.log('Returning to lobby...');
-    
+
     // TODO: Replace with actual lobby scene transition
     // For now, we'll redirect to a basic menu/lobby
     // In a real implementation, this would be:
     // this.scene.start('LobbyScene');
-    
+
     // Placeholder: Log and reload page (simulates going to lobby)
     console.log('Returning to lobby... (placeholder - would go to actual lobby scene)');
     window.location.reload();
-    
+
     console.log('Lobby return triggered');
   }
 
@@ -1795,7 +1785,7 @@ export class MazeScene extends Phaser.Scene {
     // Show interaction prompt if close enough
     if (closestInteractiveObject && minDistance <= interactionDistance) {
       this.showInteractionPrompt(closestInteractiveObject);
-      
+
       // Check for spacebar (Player 1) or enter (Player 2) press to interact
       if (Phaser.Input.Keyboard.JustDown(this.spacebar) || Phaser.Input.Keyboard.JustDown(this.enterKey)) {
         this.interactWithObject(closestInteractiveObject);
@@ -1817,9 +1807,6 @@ export class MazeScene extends Phaser.Scene {
     switch (obj.type) {
       case ObjectType.LIGHT_SWITCH:
         promptText = 'Press SPACE to toggle lights';
-        break;
-      case ObjectType.COMPUTER:
-        promptText = 'Press SPACE to use computer';
         break;
       case ObjectType.INTERNAL_DOOR:
         promptText = 'Press SPACE to open/close door';
@@ -2024,13 +2011,13 @@ export class MazeScene extends Phaser.Scene {
       graphics.strokeRect(x, y, width, height);
       // Door handle
       graphics.fillStyle(0xF1C40F, 1);
-      graphics.fillCircle(x + width - 4, y + height/2, 2);
+      graphics.fillCircle(x + width - 4, y + height / 2, 2);
     }
   }
 
-  private showKeyCollectionFeedback(x: number, y: number, keyId: string) {
+  private showTrashCollectionFeedback(x: number, y: number, trashId: string) {
     // Create floating text feedback
-    const feedbackText = this.add.text(x, y, '🗝️ KEY COLLECTED!', {
+    const feedbackText = this.add.text(x, y, '🗑️ TRASH COLLECTED!', {
       fontSize: '14px',
       color: '#f1c40f',
       fontFamily: 'Arial',
@@ -2049,22 +2036,22 @@ export class MazeScene extends Phaser.Scene {
       }
     });
 
-    // Update key counter in UI
-    this.updateKeyCounter();
+    // Update trash counter in UI
+    this.updateTrashCounter();
   }
 
-  private updateKeyCounter() {
-    // Add or update key counter display
-    const existingCounter = this.children.getByName('keyCounter') as Phaser.GameObjects.Text;
+  private updateTrashCounter() {
+    // Add or update trash counter display
+    const existingCounter = this.children.getByName('trashCounter') as Phaser.GameObjects.Text;
     if (existingCounter) {
-      existingCounter.setText(`Keys: ${this.collectedKeys.size}/${this.keys.length}`);
+      existingCounter.setText(`Trash: ${this.collectedTrash.size}/6`);
     } else {
-      this.add.text(20, 60, `Keys: ${this.collectedKeys.size}/${this.keys.length}`, {
+      this.add.text(20, 60, `Trash: ${this.collectedTrash.size}/6`, {
         fontSize: '16px',
-        color: '#f1c40f',
+        color: '#2ecc71',
         fontFamily: 'Arial',
         fontStyle: 'bold'
-      }).setName('keyCounter');
+      }).setName('trashCounter');
     }
   }
 
@@ -2139,7 +2126,7 @@ export class MazeScene extends Phaser.Scene {
   private setupNetworking(): void {
     // Always set up event listeners (they'll be ignored if not connected)
     console.log('🔧 Setting up networking event listeners...');
-    
+
     socketManager.onPlayerMove((data) => {
       console.log('📨 Received player move:', data);
       this.handleRemotePlayerMove(data);
@@ -2149,8 +2136,8 @@ export class MazeScene extends Phaser.Scene {
       this.handleGameStateUpdate(data);
     });
 
-    socketManager.onKeyCollection((data) => {
-      this.handleRemoteKeyCollection(data);
+    socketManager.onTrashCollection((data) => {
+      this.handleRemoteTrashCollection(data);
     });
 
     socketManager.onGameWin((data) => {
@@ -2184,7 +2171,7 @@ export class MazeScene extends Phaser.Scene {
   public enableNetworking(): void {
     this.isNetworked = true;
     this.localPlayerId = socketManager.getPlayerId();
-    
+
     console.log('🌐 NETWORKING ENABLED!', {
       playerId: this.localPlayerId,
       roomId: socketManager.getRoomId()
@@ -2202,7 +2189,7 @@ export class MazeScene extends Phaser.Scene {
     this.isHost = isHost;
     this.playerIndex = isHost ? 0 : 1;
     console.log(`🎯 Player will spawn as: ${isHost ? 'HOST (Player 1 - TOP LEFT)' : 'JOINER (Player 2 - BOTTOM RIGHT)'}`);
-    
+
     // Destroy existing players if any
     if (this.player1) {
       this.player1.destroy();
@@ -2213,7 +2200,7 @@ export class MazeScene extends Phaser.Scene {
       this.player2 = undefined as any;
     }
     this.localPlayer = undefined as any;
-    
+
     // Create player with the correct role
     this.createPlayers();
   }
@@ -2234,14 +2221,14 @@ export class MazeScene extends Phaser.Scene {
         position: { x, y },
         direction: this.playerDirection
       });
-      
+
       this.lastSentPosition = { x, y };
     }
   }
 
   private handleRemotePlayerMove(data: any): void {
     const { playerId, position, timestamp } = data;
-    
+
     // Don't update our own player
     if (playerId === this.localPlayerId) {
       return;
@@ -2249,14 +2236,15 @@ export class MazeScene extends Phaser.Scene {
 
     // Get or create remote player graphics
     let remotePlayer = this.remotePlayers.get(playerId);
-    
+
     if (!remotePlayer) {
-      // Create new remote player
-      remotePlayer = this.add.graphics();
-      remotePlayer.fillStyle(0x9B59B6, 1); // Purple for remote players
-      remotePlayer.fillCircle(0, 0, 15);
+      // Create new remote player using opposite sprite
+      const spriteKey = this.isHost ? 'player2' : 'player1';
+      remotePlayer = this.add.sprite(position.x, position.y, spriteKey);
+      remotePlayer.setScale(0.25); // Same scale as local players
+      remotePlayer.setTint(0x9B59B6); // Purple tint to distinguish remote player
       this.remotePlayers.set(playerId, remotePlayer);
-      
+
       console.log('👤 Created remote player:', playerId);
     }
 
@@ -2267,125 +2255,131 @@ export class MazeScene extends Phaser.Scene {
   private handleGameStateUpdate(data: any): void {
     // Handle server-authoritative game state updates
     // console.log('🎮 Game state update received:', data); // DISABLED - was causing infinite loop
-    
+
     // TODO: Update keys, treasure state based on server authority
   }
 
-  private handleRemoteKeyCollection(data: any): void {
-    const { keyId, playerId } = data;
-    
-    console.log(`🗝️ Remote key collection: ${keyId} by ${playerId}`);
-    
-    // Remove the key from our local display
-    if (this.collectedKeys.has(keyId)) {
-      console.log(`Key ${keyId} already collected locally`);
+  private handleRemoteTrashCollection(data: any): void {
+    const { trashId, playerId } = data;
+
+    console.log(`🗑️ Remote trash collection: ${trashId} by ${playerId}`);
+
+    // Remove the trash from our local display
+    if (this.collectedTrash.has(trashId)) {
+      console.log(`Trash ${trashId} already collected locally`);
       return; // Already collected locally
     }
-    
+
     // Mark as collected and remove visually
-    this.collectedKeys.add(keyId);
-    
-    // Remove key graphics
-    const keyGraphics = this.keyGraphics.get(keyId);
-    if (keyGraphics) {
-      keyGraphics.destroy();
-      this.keyGraphics.delete(keyId);
+    this.collectedTrash.add(trashId);
+
+    // Remove trash sprite
+    const trashSprite = this.trashSprites.get(trashId);
+    if (trashSprite) {
+      trashSprite.destroy();
+      this.trashSprites.delete(trashId);
     }
-    
-    // Remove key text
-    const keyText = this.keyGraphics.get(`${keyId}_text`);
-    if (keyText) {
-      keyText.destroy();
-      this.keyGraphics.delete(`${keyId}_text`);
+
+    // Remove trash graphics placeholder
+    const trashGraphics = this.trashGraphics.get(trashId);
+    if (trashGraphics) {
+      trashGraphics.destroy();
+      this.trashGraphics.delete(trashId);
     }
-    
-    // Clear the highlight state if this was the highlighted key
-    if (this.highlightedKey?.id === keyId) {
-      this.highlightedKey = null;
-      if (this.activeKeyTween) {
-        this.activeKeyTween.stop();
-        this.activeKeyTween = null;
+
+    // Clear the highlight state if this was the highlighted trash
+    if (this.highlightedTrash?.id === trashId) {
+      this.highlightedTrash = null;
+      if (this.activeTrashTween) {
+        this.activeTrashTween.stop();
+        this.activeTrashTween = null;
       }
     }
-    
-    // Update key counter
-    this.updateKeyCounter();
-    
-    console.log(`✅ Remote key ${keyId} removed from display`);
+
+    // Update trash counter
+    this.updateTrashCounter();
+
+    console.log(`✅ Remote trash ${trashId} removed from display`);
   }
 
   private handleRemoteTreasureClaim(data: any): void {
     const { winnerId, winnerWallet, wager } = data;
-    
+
     console.log(`🏆 Remote treasure claimed by: ${winnerId}`, data);
-    
+
     // Update game state
     this.isGameEnded = true;
     this.winnerId = winnerId;
-    
+
     // Mark treasure as claimed
     this.treasure.claimed = true;
     this.treasure.claimedBy = winnerId;
-    
+
     // Hide interaction prompt
     this.hideTreasureInteractionPrompt();
-    
+
     // Show victory/defeat screen based on who won
     if (winnerId === this.localPlayerId) {
       this.showVictoryMessage(wager);
     } else {
       this.showDefeatMessage(winnerId, wager);
     }
-    
+
     console.log(`🏁 Game ended! Winner: ${winnerId}`);
   }
 
-  private attemptKeyCollection(key: Key): void {
+  private attemptTrashCollection(trash: Trash): void {
     if (this.isNetworked && socketManager.getConnectionStatus()) {
       // Networked mode: Send to server for validation
-      console.log('🌐 Sending key collection to server:', key.id);
-      socketManager.sendKeyCollection({
-        keyId: key.id,
+      console.log('🌐 Sending trash collection to server:', trash.id);
+      socketManager.sendTrashCollection({
+        trashId: trash.id,
         position: this.player1 ? { x: this.player1.x, y: this.player1.y } : { x: 0, y: 0 }
       });
     } else {
       // Local mode: Handle immediately
-      console.log('🏠 Local key collection:', key.id);
-      this.collectKeyLocally(key.id);
+      console.log('🏠 Local trash collection:', trash.id);
+      this.collectTrashLocally(trash.id);
     }
   }
 
-  private collectKeyLocally(keyId: string): void {
-    // Check if key already collected
-    if (this.collectedKeys.has(keyId)) {
-      console.log(`Key ${keyId} already collected`);
+  private collectTrashLocally(trashId: string): void {
+    // Check if trash already collected
+    if (this.collectedTrash.has(trashId)) {
+      console.log(`Trash ${trashId} already collected`);
       return;
     }
 
-    // Mark key as collected
-    this.collectedKeys.add(keyId);
+    // Mark trash as collected
+    this.collectedTrash.add(trashId);
 
-    // Remove key graphics
-    const keyGraphics = this.keyGraphics.get(keyId);
-    if (keyGraphics) {
-      keyGraphics.destroy();
-      this.keyGraphics.delete(keyId);
+    // Remove trash sprite
+    const trashSprite = this.trashSprites.get(trashId);
+    if (trashSprite) {
+      trashSprite.destroy();
+      this.trashSprites.delete(trashId);
     }
 
-    // Remove key text
-    const keyText = this.keyGraphics.get(`${keyId}_text`);
-    if (keyText) {
-      keyText.destroy();
-      this.keyGraphics.delete(`${keyId}_text`);
+    // Remove trash graphics placeholder
+    const trashGraphics = this.trashGraphics.get(trashId);
+    if (trashGraphics) {
+      trashGraphics.destroy();
+      this.trashGraphics.delete(trashId);
     }
 
     // Clear the highlight state
-    this.highlightedKey = null;
+    this.highlightedTrash = null;
 
     // Update UI
-    this.updateKeyCounter();
+    this.updateTrashCounter();
 
-    console.log(`✅ Key collected locally: ${keyId}`);
+    // Check win condition (3 trash collected)
+    if (this.collectedTrash.size >= 3) {
+      console.log(`🏆 Player collected 3 trash items! Game won!`);
+      // this.handleGameWin('local-player');
+    }
+
+    console.log(`✅ Trash collected locally: ${trashId} (${this.collectedTrash.size}/3)`);
   }
 
   private cleanupNetworking(): void {

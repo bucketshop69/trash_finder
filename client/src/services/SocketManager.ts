@@ -11,14 +11,14 @@ export interface PlayerMoveData {
   direction?: { x: number; y: number };
 }
 
-export interface KeyCollectionData {
-  keyId: string;
+export interface TrashCollectionData {
+  trashId: string;
   position: { x: number; y: number };
 }
 
 export interface TreasureClaimData {
   position: { x: number; y: number };
-  keysCollected: number;
+  trashCollected: number;
 }
 
 export class SocketManager {
@@ -32,7 +32,7 @@ export class SocketManager {
   private onConnectionChange: ((connected: boolean) => void) | null = null;
   private onGameStateUpdate: ((data: GameStateUpdate) => void) | null = null;
   private onPlayerMoved: ((data: any) => void) | null = null;
-  private onKeyCollected: ((data: any) => void) | null = null;
+  private onTrashCollected: ((data: any) => void) | null = null;
   private onGameWon: ((data: any) => void) | null = null;
   private onGameStarted: ((data: any) => void) | null = null;
   private onRoomJoined: ((data: any) => void) | null = null;
@@ -149,13 +149,13 @@ export class SocketManager {
     });
   }
 
-  public sendKeyCollection(keyData: KeyCollectionData): void {
+  public sendTrashCollection(trashData: TrashCollectionData): void {
     if (!this.isConnected || !this.socket) return;
 
-    console.log('🗝️ Attempting to collect key:', keyData.keyId);
-    this.socket.emit('collect_key', {
-      keyId: keyData.keyId,
-      position: keyData.position,
+    console.log('🗑️ Attempting to collect trash:', trashData.trashId);
+    this.socket.emit('collect_trash', {
+      trashId: trashData.trashId,
+      position: trashData.position,
       timestamp: Date.now()
     });
   }
@@ -166,7 +166,7 @@ export class SocketManager {
     console.log('💎 Attempting to claim treasure...');
     this.socket.emit('claim_treasure', {
       position: treasureData.position,
-      keysCollected: treasureData.keysCollected,
+      trashCollected: treasureData.trashCollected,
       timestamp: Date.now()
     });
   }
@@ -265,9 +265,9 @@ export class SocketManager {
       this.onPlayerMoved?.(data);
     });
 
-    this.socket.on('key_collected', (data) => {
-      console.log('🗝️ Key collected:', data);
-      this.onKeyCollected?.(data);
+    this.socket.on('trash_collected', (data) => {
+      console.log('🗑️ Trash collected:', data);
+      this.onTrashCollected?.(data);
     });
 
     this.socket.on('game_won', (data) => {
@@ -285,8 +285,8 @@ export class SocketManager {
       console.error('❌ Queue error:', data.message);
     });
 
-    this.socket.on('key_collection_failed', (data) => {
-      console.warn('⚠️ Key collection failed:', data.reason);
+    this.socket.on('trash_collection_failed', (data) => {
+      console.warn('⚠️ Trash collection failed:', data.reason);
     });
 
     this.socket.on('treasure_claim_failed', (data) => {
@@ -332,8 +332,8 @@ export class SocketManager {
     this.onPlayerMoved = callback;
   }
 
-  public onKeyCollection(callback: (data: any) => void): void {
-    this.onKeyCollected = callback;
+  public onTrashCollection(callback: (data: any) => void): void {
+    this.onTrashCollected = callback;
   }
 
   public onGameWin(callback: (data: any) => void): void {

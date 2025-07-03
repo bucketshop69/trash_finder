@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { socketManager } from '../services/SocketManager';
 import WalletConnect from './WalletConnect';
 import PlayerStatus from './PlayerStatus';
-import { 
-  checkSufficientBalance, 
+import {
+  checkSufficientBalance,
   buildInitializeWagerTransaction,
-  buildJoinWagerTransaction, 
-  signAndSendTransaction 
+  buildJoinWagerTransaction,
+  signAndSendTransaction
 } from '../utils/transactions';
 import { isBackpackInstalled, GORBAGANA_FAUCET_URL } from '../utils/blockchain';
 
@@ -44,20 +44,20 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
 
     setIsConnecting(true);
     setError('');
-    
+
     try {
       // Connect to server
       await socketManager.connect();
-      
+
       // Join queue to create a room (no wager)
       socketManager.joinQueue(walletAddress);
-      
+
       // Listen for room creation
       socketManager.onRoomJoin((data) => {
         onCreateRoom(data.roomId);
         setIsConnecting(false);
       });
-      
+
     } catch (error) {
       console.error('Failed to create room:', error);
       setError('Failed to create room: ' + (error as Error).message);
@@ -101,25 +101,25 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
         try {
           // Build and send initialize wager transaction
           const tx = await buildInitializeWagerTransaction(
-            walletAddress, 
-            data.roomId, 
+            walletAddress,
+            data.roomId,
             selectedWager
           );
-          
+
           const signature = await signAndSendTransaction(tx.transaction, walletAddress);
           console.log('Wager initialized:', signature);
-          
+
           // Notify server that wager was staked
           socketManager.notifyPlayerStaked(walletAddress, data.roomId);
-          
+
           // Start timer and show room sharing
           setCreatedRoomId(data.roomId);
           setRoomTimer(120); // 2 minutes
           setIsCreatingWager(false);
           setShowWagerOptions(false);
-          
+
           onCreateRoom(data.roomId);
-          
+
         } catch (txError) {
           console.error('Transaction failed:', txError);
           setError('Transaction failed: ' + (txError as Error).message);
@@ -131,7 +131,7 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
         setError(data.message);
         setIsCreatingWager(false);
       });
-      
+
     } catch (error) {
       console.error('Failed to create wager room:', error);
       setError('Failed to create wager room: ' + (error as Error).message);
@@ -148,10 +148,10 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
     setIsValidatingRoom(true);
     setError('');
     setRoomInfo(null);
-    
+
     try {
       await socketManager.connect();
-      
+
       const socket = socketManager.getSocket();
       if (!socket) {
         setError('Socket not available');
@@ -174,7 +174,7 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
 
       // Request room info
       socketManager.getRoomInfo(joinRoomId);
-      
+
     } catch (error) {
       console.error('Failed to validate room:', error);
       setError('Failed to validate room: ' + (error as Error).message);
@@ -187,15 +187,15 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
       setError('Please connect your wallet first');
       return;
     }
-    
+
     setIsConnecting(true);
     setError('');
-    
+
     try {
       await socketManager.connect();
-      
+
       socketManager.joinRoom(joinRoomId, walletAddress);
-      
+
       // Listen for room join
       socketManager.onRoomJoin((data) => {
         console.log('🏠 Joined room:', data.roomId);
@@ -203,13 +203,13 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
         setIsConnecting(false);
         setRoomInfo(null);
       });
-      
+
       const socket = socketManager.getSocket();
       socket?.on('queue_error', (data) => {
         setError(data.message);
         setIsConnecting(false);
       });
-      
+
     } catch (error) {
       console.error('Failed to join room:', error);
       setError('Failed to join room: ' + (error as Error).message);
@@ -232,19 +232,19 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
       const tx = await buildJoinWagerTransaction(walletAddress, roomId, wagerAmount);
       const signature = await signAndSendTransaction(tx.transaction, walletAddress);
       console.log('Joined wager:', signature);
-      
+
       // First join the room, then notify staked
       socketManager.joinRoom(roomId, walletAddress);
-      
+
       // Wait a moment for room join to complete, then notify staked
       setTimeout(() => {
         socketManager.notifyPlayerStaked(walletAddress, roomId);
       }, 500);
-      
+
       // Redirect to game after successful wager join
       onJoinRoom(roomId);
       setRoomInfo(null);
-      
+
     } catch (error) {
       console.error('Failed to join wager:', error);
       setError('Failed to join wager: ' + (error as Error).message);
@@ -260,18 +260,18 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
 
   const checkUnclaimedWagers = async () => {
     if (!walletAddress) return;
-    
+
     try {
       await socketManager.connect();
       socketManager.getUnclaimedWagers(walletAddress);
-      
+
       // Listen for response
       const socket = socketManager.getSocket();
       socket?.on('unclaimed_wagers', (data) => {
         console.log('📋 Unclaimed wagers:', data);
         setUnclaimedWagers(data.wagers || []);
       });
-      
+
     } catch (error) {
       console.error('Failed to check unclaimed wagers:', error);
     }
@@ -280,9 +280,9 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
   const handleClaimWager = async (roomId: string) => {
     try {
       console.log('🏆 Claiming wager for room:', roomId);
-      
+
       await socketManager.connect();
-      
+
       // Listen for claim responses
       const socket = socketManager.getSocket();
       socket?.on('wager_claim_success', (data) => {
@@ -290,15 +290,15 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
         setUnclaimedWagers(prev => prev.filter(w => w.roomId !== data.roomId));
         setError(''); // Clear any previous errors
       });
-      
+
       socket?.on('wager_claim_error', (data) => {
         console.error('❌ Wager claim error:', data);
         setError('Failed to claim wager: ' + data.message);
       });
-      
+
       // Notify server
       socketManager.notifyWagerClaimed(walletAddress, roomId);
-      
+
     } catch (error) {
       console.error('Failed to claim wager:', error);
       setError('Failed to claim wager: ' + (error as Error).message);
@@ -340,7 +340,7 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
           <div className="space-y-6">
             <div>
               <h2 className="text-xl font-semibold mb-4">Your Status</h2>
-              <PlayerStatus 
+              <PlayerStatus
                 walletAddress={walletAddress}
                 isConnected={!!walletAddress}
               />
@@ -378,90 +378,90 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
 
             <div>
               <h2 className="text-xl font-semibold mb-4">Game Actions</h2>
-              
+
               <div>
-              {error && (
-                <div style={{background: '#fee', color: '#c00', padding: '10px', borderRadius: '5px'}}>
-                  {error}
-                  {error.includes('Insufficient GOR') && (
-                    <div>
-                      <a href={GORBAGANA_FAUCET_URL} target="_blank" rel="noopener noreferrer">
-                        Get GOR from Faucet
-                      </a>
-                    </div>
-                  )}
-                </div>
-              )}
-              
-              {createdRoomId && (
-                <div style={{background: '#e8f5e8', border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', margin: '10px 0'}}>
-                  <h4>🎯 Wager Room Created!</h4>
-                  <div style={{display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0'}}>
-                    <div style={{fontFamily: 'monospace', background: '#f0f0f0', padding: '8px', flex: 1}}>
-                      Room ID: {createdRoomId}
-                    </div>
-                    <button
-                      onClick={() => navigator.clipboard.writeText(createdRoomId || '')}
-                      style={{padding: '8px 12px', background: '#4a90e2', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}
-                      title="Copy Room ID"
-                    >
-                      📋
-                    </button>
+                {error && (
+                  <div style={{ background: '#fee', color: '#c00', padding: '10px', borderRadius: '5px' }}>
+                    {error}
+                    {error.includes('Insufficient GOR') && (
+                      <div>
+                        <a href={GORBAGANA_FAUCET_URL} target="_blank" rel="noopener noreferrer">
+                          Get GOR from Faucet
+                        </a>
+                      </div>
+                    )}
                   </div>
-                  <div style={{fontSize: '14px', color: '#666'}}>
-                    ⏱️ Waiting for opponent: {Math.floor(roomTimer / 60)}:{(roomTimer % 60).toString().padStart(2, '0')}
-                  </div>
-                  <div style={{fontSize: '12px', color: '#888', marginTop: '5px'}}>
-                    Share this Room ID with your opponent
-                  </div>
-                </div>
-              )}
-              
-              <div style={{display: 'flex', gap: '10px'}}>
-                <button
-                  onClick={handleCreateRoom}
-                  disabled={isConnecting || !walletAddress}
-                  style={{flex: 1, padding: '15px', fontSize: '16px'}}
-                >
-                  {isConnecting ? 'Creating...' : 'Create Free Room'}
-                </button>
-                
-                <button
-                  onClick={() => setShowWagerOptions(!showWagerOptions)}
-                  disabled={!walletAddress}
-                  style={{flex: 1, padding: '15px', fontSize: '16px', background: '#f60'}}
-                >
-                  Create Wager Room
-                </button>
-              </div>
-              
-              {showWagerOptions && (
-                <div style={{border: '1px solid #ccc', padding: '15px', borderRadius: '5px'}}>
-                  <h4>Select Wager Amount:</h4>
-                  <div style={{display: 'flex', gap: '10px', margin: '10px 0'}}>
-                    {[0.1, 0.5, 1.0].map(amount => (
+                )}
+
+                {createdRoomId && (
+                  <div style={{ background: '#e8f5e8', border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', margin: '10px 0' }}>
+                    <h4>🎯 Wager Room Created!</h4>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0' }}>
+                      <div style={{ fontFamily: 'monospace', background: '#f0f0f0', padding: '8px', flex: 1 }}>
+                        Room ID: {createdRoomId}
+                      </div>
                       <button
-                        key={amount}
-                        onClick={() => setSelectedWager(amount)}
-                        style={{
-                          padding: '10px 15px',
-                          background: selectedWager === amount ? '#4a90e2' : '#ccc',
-                          color: selectedWager === amount ? 'white' : 'black'
-                        }}
+                        onClick={() => navigator.clipboard.writeText(createdRoomId || '')}
+                        style={{ padding: '8px 12px', background: '#4a90e2', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                        title="Copy Room ID"
                       >
-                        {amount} GOR
+                        📋
                       </button>
-                    ))}
+                    </div>
+                    <div style={{ fontSize: '14px', color: '#666' }}>
+                      ⏱️ Waiting for opponent: {Math.floor(roomTimer / 60)}:{(roomTimer % 60).toString().padStart(2, '0')}
+                    </div>
+                    <div style={{ fontSize: '12px', color: '#888', marginTop: '5px' }}>
+                      Share this Room ID with your opponent
+                    </div>
                   </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px' }}>
                   <button
-                    onClick={handleCreateWagerRoom}
-                    disabled={!selectedWager || isCreatingWager}
-                    style={{width: '100%', padding: '12px', background: '#4a90e2', color: 'white'}}
+                    onClick={handleCreateRoom}
+                    disabled={isConnecting || !walletAddress}
+                    style={{ flex: 1, padding: '15px', fontSize: '16px' }}
                   >
-                    {isCreatingWager ? 'Creating Wager...' : `Create ${selectedWager} GOR Wager`}
+                    {isConnecting ? 'Creating...' : 'Create Free Room'}
+                  </button>
+
+                  <button
+                    onClick={() => setShowWagerOptions(!showWagerOptions)}
+                    disabled={!walletAddress}
+                    style={{ flex: 1, padding: '15px', fontSize: '16px', background: '#f60' }}
+                  >
+                    Create Wager Room
                   </button>
                 </div>
-              )}
+
+                {showWagerOptions && (
+                  <div style={{ border: '1px solid #ccc', padding: '15px', borderRadius: '5px' }}>
+                    <h4>Select Wager Amount:</h4>
+                    <div style={{ display: 'flex', gap: '10px', margin: '10px 0' }}>
+                      {[0.1, 0.5, 1.0].map(amount => (
+                        <button
+                          key={amount}
+                          onClick={() => setSelectedWager(amount)}
+                          style={{
+                            padding: '10px 15px',
+                            background: selectedWager === amount ? '#4a90e2' : '#ccc',
+                            color: selectedWager === amount ? 'white' : 'black'
+                          }}
+                        >
+                          {amount} GOR
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={handleCreateWagerRoom}
+                      disabled={!selectedWager || isCreatingWager}
+                      style={{ width: '100%', padding: '12px', background: '#4a90e2', color: 'white' }}
+                    >
+                      {isCreatingWager ? 'Creating Wager...' : `Create ${selectedWager} GOR Wager`}
+                    </button>
+                  </div>
+                )}
 
                 {/* Join Existing Room */}
                 <div className="bg-gray-800 p-4 rounded-lg">
@@ -478,40 +478,40 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
                     <button
                       onClick={handleValidateRoom}
                       disabled={isValidatingRoom || !joinRoomId.trim()}
-                      style={{width: '100%', padding: '12px', marginBottom: '10px'}}
+                      style={{ width: '100%', padding: '12px', marginBottom: '10px' }}
                     >
                       {isValidatingRoom ? 'Checking Room...' : 'Check Room'}
                     </button>
-                    
+
                     {roomInfo && (
-                      <div style={{border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', background: '#f8f9fa'}}>
+                      <div style={{ border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', background: '#f8f9fa' }}>
                         <h4>🎯 Room Found!</h4>
                         <div>Players: {roomInfo.playerCount}/{roomInfo.maxPlayers}</div>
                         <div>Status: {roomInfo.gameStarted ? 'In Game' : 'Waiting'}</div>
-                        
+
                         {roomInfo.wager ? (
                           <div>
-                            <div style={{color: '#f60', fontWeight: 'bold'}}>
+                            <div style={{ color: '#f60', fontWeight: 'bold' }}>
                               💰 Wager Game: {roomInfo.wager.amount} GOR
                             </div>
-                            <div style={{fontSize: '12px', margin: '5px 0'}}>
+                            <div style={{ fontSize: '12px', margin: '5px 0' }}>
                               Staked players: {roomInfo.wager.playersStaked}/2
                             </div>
                             <button
                               onClick={() => handleJoinWager(joinRoomId, roomInfo.wager.amount)}
                               disabled={!walletAddress}
-                              style={{width: '100%', padding: '12px', background: '#f60', color: 'white', marginTop: '10px'}}
+                              style={{ width: '100%', padding: '12px', background: '#f60', color: 'white', marginTop: '10px' }}
                             >
                               Join Wager: {roomInfo.wager.amount} GOR
                             </button>
                           </div>
                         ) : (
                           <div>
-                            <div style={{color: '#4a90e2'}}>🆓 Free Game</div>
+                            <div style={{ color: '#4a90e2' }}>🆓 Free Game</div>
                             <button
                               onClick={handleJoinExistingRoom}
                               disabled={isConnecting || !walletAddress}
-                              style={{width: '100%', padding: '12px', background: '#4a90e2', color: 'white', marginTop: '10px'}}
+                              style={{ width: '100%', padding: '12px', background: '#4a90e2', color: 'white', marginTop: '10px' }}
                             >
                               {isConnecting ? 'Joining...' : 'Join Free Game'}
                             </button>
@@ -520,47 +520,6 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
                       </div>
                     )}
                   </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Game Info Section */}
-          <div className="space-y-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Game Rules</h2>
-              <div className="bg-gray-800 p-4 rounded-lg space-y-3">
-                <div className="flex items-start space-x-3">
-                  <span className="text-gorbagana-accent">🗝️</span>
-                  <div>
-                    <div className="font-semibold">Collect Keys</div>
-                    <div className="text-sm text-gray-400">Navigate rooms to find keys that unlock the center</div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <span className="text-gorbagana-accent">💡</span>
-                  <div>
-                    <div className="font-semibold">Light Challenge</div>
-                    <div className="text-sm text-gray-400">Rooms may go dark - navigate by memory!</div>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-3">
-                  <span className="text-gorbagana-accent">🏆</span>
-                  <div>
-                    <div className="font-semibold">Win Condition</div>
-                    <div className="text-sm text-gray-400">First to reach center and claim treasure wins</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <h2 className="text-xl font-semibold mb-4">Rewards</h2>
-              <div className="bg-gray-800 p-4 rounded-lg">
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gorbagana-accent">🗑️💎</div>
-                  <div className="font-semibold">Gorbagana Tokens</div>
-                  <div className="text-sm text-gray-400">Winners receive native testnet tokens</div>
                 </div>
               </div>
             </div>
