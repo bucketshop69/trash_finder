@@ -34,6 +34,9 @@ export class MazeScene extends Phaser.Scene {
   // Player movement
   private player1!: Phaser.GameObjects.Graphics;
   private player2!: Phaser.GameObjects.Graphics;
+  private localPlayer!: Phaser.GameObjects.Graphics;
+  private isHost: boolean = false;
+  private playerIndex: number = 0; // 0 for host/Player1, 1 for joiner/Player2
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
   private wasdKeys!: any;
   private arrowKeys!: any;
@@ -848,6 +851,13 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private createPlayers() {
+    // Player role will be set by App component via setPlayerRole()
+    // For now, create a default single player setup
+    if (this.localPlayer) {
+      // Player already created, skip
+      return;
+    }
+    
     // Get spawn positions for both players
     const mazeConfig = {
       rows: 3,
@@ -859,42 +869,47 @@ export class MazeScene extends Phaser.Scene {
     const player1Pos = this.mazeGenerator.getSpawnPosition(0, mazeConfig);
     const player2Pos = this.mazeGenerator.getSpawnPosition(1, mazeConfig);
 
-    // Create Player 1 (blue circle) - WASD controls
-    this.player1 = this.add.graphics();
-    this.player1.fillStyle(0x3498db, 1); // Blue
-    this.player1.fillCircle(0, 0, 15);
-    this.player1.lineStyle(3, 0xffffff, 1);
-    this.player1.strokeCircle(0, 0, 15);
-    this.player1.setPosition(player1Pos.x, player1Pos.y);
+    if (this.isHost) {
+      // Host controls Player 1 (blue, top-left)
+      this.player1 = this.add.graphics();
+      this.player1.fillStyle(0x3498db, 1); // Blue
+      this.player1.fillCircle(0, 0, 15);
+      this.player1.lineStyle(3, 0xffffff, 1);
+      this.player1.strokeCircle(0, 0, 15);
+      this.player1.setPosition(player1Pos.x, player1Pos.y);
+      this.localPlayer = this.player1;
 
-    // Player 1 label
-    this.add.text(player1Pos.x, player1Pos.y - 35, 'PLAYER 1\n(WASD)', {
-      fontSize: '12px',
-      color: '#3498db',
-      fontFamily: 'Arial',
-      fontStyle: 'bold',
-      align: 'center'
-    }).setOrigin(0.5);
+      // Player 1 label
+      this.add.text(player1Pos.x, player1Pos.y - 35, 'PLAYER 1\n(WASD)', {
+        fontSize: '12px',
+        color: '#3498db',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        align: 'center'
+      }).setOrigin(0.5);
 
-    // Create Player 2 (red circle) - Arrow keys controls
-    this.player2 = this.add.graphics();
-    this.player2.fillStyle(0xe74c3c, 1); // Red
-    this.player2.fillCircle(0, 0, 15);
-    this.player2.lineStyle(3, 0xffffff, 1);
-    this.player2.strokeCircle(0, 0, 15);
-    this.player2.setPosition(player2Pos.x, player2Pos.y);
+      console.log(`Host spawned as Player 1 at: ${player1Pos.x}, ${player1Pos.y}`);
+    } else {
+      // Joiner controls Player 2 (red, bottom-right)
+      this.player2 = this.add.graphics();
+      this.player2.fillStyle(0xe74c3c, 1); // Red
+      this.player2.fillCircle(0, 0, 15);
+      this.player2.lineStyle(3, 0xffffff, 1);
+      this.player2.strokeCircle(0, 0, 15);
+      this.player2.setPosition(player2Pos.x, player2Pos.y);
+      this.localPlayer = this.player2;
 
-    // Player 2 label
-    this.add.text(player2Pos.x, player2Pos.y - 35, 'PLAYER 2\n(ARROWS)', {
-      fontSize: '12px',
-      color: '#e74c3c',
-      fontFamily: 'Arial',
-      fontStyle: 'bold',
-      align: 'center'
-    }).setOrigin(0.5);
+      // Player 2 label  
+      this.add.text(player2Pos.x, player2Pos.y - 35, 'PLAYER 2\n(WASD)', {
+        fontSize: '12px',
+        color: '#e74c3c',
+        fontFamily: 'Arial',
+        fontStyle: 'bold',
+        align: 'center'
+      }).setOrigin(0.5);
 
-    console.log(`Player 1 spawned at: ${player1Pos.x}, ${player1Pos.y}`);
-    console.log(`Player 2 spawned at: ${player2Pos.x}, ${player2Pos.y}`);
+      console.log(`Joiner spawned as Player 2 at: ${player2Pos.x}, ${player2Pos.y}`);
+    }
   }
 
   private createFlashlight() {
@@ -979,13 +994,52 @@ export class MazeScene extends Phaser.Scene {
   }
 
   private handlePlayerMovement() {
-    if ((!this.player1 && !this.player2) || this.isGameEnded) return;
+    if (!this.localPlayer || this.isGameEnded) return;
     
-    // Handle Player 1 movement (WASD)
-    this.handlePlayer1Movement();
-    
-    // Handle Player 2 movement (Arrow keys)
-    this.handlePlayer2Movement();
+    // Handle local player movement (always WASD for current player)
+    this.handleLocalPlayerMovement();
+  }
+
+  private handleLocalPlayerMovement() {
+    if (!this.localPlayer) return;
+
+    const speed = this.playerSpeed * (1 / 60); // 60 FPS movement
+
+    let velocityX = 0;
+    let velocityY = 0;
+
+    // WASD movement for local player (both host and joiner use WASD)
+    if (this.wasdKeys.A.isDown) {
+      velocityX = -speed;
+    } else if (this.wasdKeys.D.isDown) {
+      velocityX = speed;
+    }
+
+    if (this.wasdKeys.W.isDown) {
+      velocityY = -speed;
+    } else if (this.wasdKeys.S.isDown) {
+      velocityY = speed;
+    }
+
+    // Apply movement with collision detection
+    if (velocityX !== 0 || velocityY !== 0) {
+      const currentX = this.localPlayer.x;
+      const currentY = this.localPlayer.y;
+      const newX = currentX + velocityX;
+      const newY = currentY + velocityY;
+
+      // Check if the new position is valid (no collision)
+      if (this.isValidPosition(newX, newY, this.localPlayer)) {
+        this.localPlayer.setPosition(newX, newY);
+        
+        // Update player direction for flashlight
+        this.updatePlayerDirection(velocityX, velocityY);
+        this.lastMovement = { x: velocityX, y: velocityY };
+        
+        // Send position to server if networked
+        this.sendPlayerPositionIfNeeded(newX, newY);
+      }
+    }
   }
 
   private handlePlayer1Movement() {
@@ -2060,10 +2114,8 @@ export class MazeScene extends Phaser.Scene {
       this.handleRemoteTreasureClaim(data);
     });
 
-    socketManager.onGameStart((data) => {
-      console.log('🎮 Game start detected - enabling networking!');
-      this.enableNetworking();
-    });
+    // Note: Game start listener is handled by App component
+    // Networking will be enabled automatically when game starts
 
     // Check initial state
     this.checkNetworkingState();
@@ -2096,10 +2148,31 @@ export class MazeScene extends Phaser.Scene {
     });
 
     // Initialize starting position
-    if (this.player1) {
-      this.lastSentPosition = { x: this.player1.x, y: this.player1.y };
+    if (this.localPlayer) {
+      this.lastSentPosition = { x: this.localPlayer.x, y: this.localPlayer.y };
       console.log('📍 Initial position set:', this.lastSentPosition);
     }
+  }
+
+  public setPlayerRole(isHost: boolean): void {
+    console.log(`🎭 setPlayerRole called with isHost: ${isHost}`);
+    this.isHost = isHost;
+    this.playerIndex = isHost ? 0 : 1;
+    console.log(`🎯 Player will spawn as: ${isHost ? 'HOST (Player 1 - TOP LEFT)' : 'JOINER (Player 2 - BOTTOM RIGHT)'}`);
+    
+    // Destroy existing players if any
+    if (this.player1) {
+      this.player1.destroy();
+      this.player1 = undefined as any;
+    }
+    if (this.player2) {
+      this.player2.destroy();
+      this.player2 = undefined as any;
+    }
+    this.localPlayer = undefined as any;
+    
+    // Create player with the correct role
+    this.createPlayers();
   }
 
   private sendPlayerPositionIfNeeded(x: number, y: number): void {
@@ -2150,7 +2223,7 @@ export class MazeScene extends Phaser.Scene {
 
   private handleGameStateUpdate(data: any): void {
     // Handle server-authoritative game state updates
-    console.log('🎮 Game state update received:', data);
+    // console.log('🎮 Game state update received:', data); // DISABLED - was causing infinite loop
     
     // TODO: Update keys, treasure state based on server authority
   }

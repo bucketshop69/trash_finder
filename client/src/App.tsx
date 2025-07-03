@@ -16,15 +16,28 @@ function App() {
   const [playerCount, setPlayerCount] = useState(1)
 
   const handleStartGame = () => {
+    console.log('🚀 GAME STARTING - isHost:', isHost, 'roomId:', roomId)
     setGameState('playing')
     setGameTime(0)
     
-    // Enable networking in the game scene
+    // Enable networking and set player role in the game scene
     setTimeout(() => {
       // @ts-ignore - Access global scene for networking
-      if (window.gameScene && window.gameScene.enableNetworking) {
+      if (window.gameScene) {
         console.log('🌐 Enabling networking for multiplayer game')
-        window.gameScene.enableNetworking()
+        console.log('🎭 Setting player role:', isHost ? 'HOST' : 'JOINER')
+        console.log('🔍 isHost value:', isHost)
+        
+        // Set player role first  
+        console.log('🎯 About to call setPlayerRole with isHost:', isHost)
+        if (window.gameScene.setPlayerRole) {
+          window.gameScene.setPlayerRole(isHost)
+        }
+        
+        // Then enable networking
+        if (window.gameScene.enableNetworking) {
+          window.gameScene.enableNetworking()
+        }
       }
     }, 500) // Small delay to ensure scene is ready
     
@@ -46,17 +59,21 @@ function App() {
   }
 
   const handleCreateRoom = (newRoomId: string) => {
+    console.log('🏠 HOST creating room:', newRoomId)
     setRoomId(newRoomId)
     setIsHost(true)
     setPlayerCount(1)
     setGameState('waiting')
+    console.log('✅ Host state set - isHost:', true)
   }
 
   const handleJoinRoom = (joinRoomId: string) => {
+    console.log('🚪 JOINER joining room:', joinRoomId)
     setRoomId(joinRoomId)
     setIsHost(false)
     setPlayerCount(2) // Joining means room now has 2 players
     setGameState('waiting')
+    console.log('✅ Joiner state set - isHost:', false)
   }
 
   const handleBackToLobby = () => {
@@ -87,13 +104,14 @@ function App() {
   useEffect(() => {
     const handleGameStart = (data: any) => {
       console.log('🎮 Game starting with both players!', data)
+      console.log('🔍 State before handleStartGame - isHost:', isHost, 'roomId:', roomId)
       handleStartGame()
     }
 
     socketManager.onGameStart(handleGameStart)
 
     // No cleanup needed if SocketManager handles listeners correctly
-  }, [])
+  }, [isHost, roomId])
 
   return (
     <div className="App">

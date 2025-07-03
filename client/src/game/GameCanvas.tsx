@@ -31,6 +31,16 @@ const GameCanvas = () => {
 
       // Create Phaser game instance
       phaserGameRef.current = new Phaser.Game(config);
+      
+      // Expose scene globally for App component access
+      setTimeout(() => {
+        const scene = phaserGameRef.current?.scene.getScene('MazeScene') as MazeScene;
+        if (scene) {
+          (window as any).gameScene = scene;
+          console.log('🌐 Game scene exposed globally');
+        }
+      }, 100);
+      
       console.log('Phaser 2x2 maze game initialized');
     }
 
