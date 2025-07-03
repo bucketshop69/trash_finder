@@ -10,7 +10,6 @@ const MAX_WAGER: u64 = 1000000; // 1 token
 pub mod gorbagana_game {
     use super::*;
 
-    // TODO: Implement initialize_wager
     pub fn initialize_wager(ctx: Context<InitializeWager>, wager_amount: u64, room_id: String) -> Result<()> {
         require!(
             wager_amount >= MIN_WAGER && wager_amount <= MAX_WAGER,
@@ -41,7 +40,6 @@ pub mod gorbagana_game {
         Ok(())
     }
 
-    // TODO: Implement join_wager
     pub fn join_wager(ctx: Context<JoinWager>, room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         game_wager.player_two = ctx.accounts.player_two.key();
@@ -64,7 +62,6 @@ pub mod gorbagana_game {
         Ok(())
     }
 
-    // TODO: Implement claim_wager
     pub fn claim_wager(ctx: Context<ClaimWager>, room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         require!(game_wager.is_claimed == false, GameError::AlreadyClaimed);
