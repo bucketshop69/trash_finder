@@ -6,8 +6,10 @@
   "scripts": {
     "dev": "nodemon src/index.ts",
     "build": "tsc",
+    "build:prod": "NODE_ENV=production npm run build",
     "start": "node dist/index.js",
-    "test": "jest"
+    "test": "jest",
+    "deploy": "npm run build:prod && railway up"
   },
   "keywords": ["gorbagana", "multiplayer", "game", "server", "solana"],
   "author": "",
