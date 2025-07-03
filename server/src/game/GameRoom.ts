@@ -6,7 +6,7 @@ export interface Player {
   id: string;
   walletAddress: string;
   position: { x: number; y: number };
-  keysCollected: number;
+  trashCollected: number;
   isReady: boolean;
   joinedAt: Date;
   hasStaked: boolean;
@@ -62,7 +62,7 @@ export class GameRoom {
       id: playerId,
       walletAddress,
       position: this.getSpawnPosition(this.players.size),
-      keysCollected: 0,
+      trashCollected: 0,
       isReady: false,
       joinedAt: new Date(),
       hasStaked: false
@@ -205,51 +205,52 @@ export class GameRoom {
     });
   }
 
-  public handleKeyCollection(playerId: string, keyData: any): void {
+  public handleTrashCollection(playerId: string, trashData: any): void {
     const player = this.players.get(playerId);
     if (!player) {
-      console.log(`❌ Player ${playerId} not found for key collection`);
+      console.log(`❌ Player ${playerId} not found for trash collection`);
       return;
     }
 
-    console.log(`🗝️ Validating key collection: ${keyData.keyId} by ${playerId}`);
+    console.log(`🗑️ Validating trash collection: ${trashData.trashId} by ${playerId}`);
     console.log(`Player position: (${player.position.x}, ${player.position.y})`);
 
-    // Validate key collection (works both in started and lobby mode for testing)
-    if (this.gameState.canCollectKey(keyData.keyId, player.position)) {
-      // Server authoritative: collect the key
-      const collected = this.gameState.collectKey(keyData.keyId);
+    // Validate trash collection (works both in started and lobby mode for testing)
+    if (this.gameState.canCollectTrash(trashData.trashId, player.position)) {
+      // Server authoritative: collect the trash
+      const collected = this.gameState.collectTrash(trashData.trashId);
       
       if (collected) {
-        player.keysCollected++;
+        player.trashCollected++;
         
-        console.log(`✅ Key ${keyData.keyId} collected by ${playerId} (total: ${player.keysCollected})`);
+        console.log(`✅ Trash ${trashData.trashId} collected by ${playerId} (total: ${player.trashCollected})`);
 
-        // Broadcast key collection to ALL players in room
-        this.io.to(this.id).emit('key_collected', {
+        // Broadcast trash collection to ALL players in room
+        this.io.to(this.id).emit('trash_collected', {
           playerId,
-          keyId: keyData.keyId,
-          keysCollected: player.keysCollected,
+          trashId: trashData.trashId,
+          trashCollected: player.trashCollected,
           playerPosition: player.position,
           timestamp: Date.now()
         });
 
-        // Keys collected but victory requires treasure interaction
-        console.log(`🗝️ Player ${playerId} now has ${player.keysCollected}/${this.gameState.getRequiredKeys()} keys`);
-        if (player.keysCollected >= this.gameState.getRequiredKeys()) {
-          console.log(`✨ Player ${playerId} has enough keys to claim treasure!`);
+        // Check if player has enough trash to win (3 trash = victory)
+        console.log(`🗑️ Player ${playerId} now has ${player.trashCollected}/${this.gameState.getRequiredTrash()} trash`);
+        if (player.trashCollected >= this.gameState.getRequiredTrash()) {
+          console.log(`🏆 Player ${playerId} has enough trash to win!`);
+          this.handlePlayerWin(playerId);
         }
       } else {
-        // Key collection failed - send error to specific player
-        console.log(`❌ Key ${keyData.keyId} could not be collected (already taken?)`);
-        this.io.to(playerId).emit('key_collection_failed', {
-          keyId: keyData.keyId,
-          reason: 'Key already collected by another player',
+        // Trash collection failed - send error to specific player
+        console.log(`❌ Trash ${trashData.trashId} could not be collected (already taken?)`);
+        this.io.to(playerId).emit('trash_collection_failed', {
+          trashId: trashData.trashId,
+          reason: 'Trash already collected by another player',
           timestamp: Date.now()
         });
       }
     } else {
-      console.log(`❌ Key ${keyData.keyId} collection invalid: player too far or key not available`);
+      console.log(`❌ Trash ${trashData.trashId} collection invalid: player too far or trash not available`);
     }
   }
 
@@ -262,10 +263,10 @@ export class GameRoom {
 
     console.log(`💎 Validating treasure claim by ${playerId}`);
     console.log(`Player position: (${player.position.x}, ${player.position.y})`);
-    console.log(`Player keys: ${player.keysCollected}, required: ${this.gameState.getRequiredKeys()}`);
+    console.log(`Player trash: ${player.trashCollected}, required: ${this.gameState.getRequiredTrash()}`);
 
     // Validate treasure claim
-    if (this.gameState.canClaimTreasure(playerId, player.position, player.keysCollected)) {
+    if (this.gameState.canClaimTreasure(playerId, player.position, player.trashCollected)) {
       // Server authoritative: claim the treasure
       const claimed = this.gameState.claimTreasure(playerId);
       
@@ -282,9 +283,9 @@ export class GameRoom {
       }
     } else {
       // Invalid treasure claim - send error to specific player
-      console.log(`❌ Treasure claim invalid: insufficient keys or player too far`);
+      console.log(`❌ Treasure claim invalid: insufficient trash or player too far`);
       this.io.to(playerId).emit('treasure_claim_failed', {
-        reason: `Insufficient keys (${player.keysCollected}/${this.gameState.getRequiredKeys()}) or too far from treasure`,
+        reason: `Insufficient trash (${player.trashCollected}/${this.gameState.getRequiredTrash()}) or too far from treasure`,
         timestamp: Date.now()
       });
     }

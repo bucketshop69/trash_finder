@@ -22,19 +22,31 @@ export interface Door {
   connectsRooms: [string, string];  // Room IDs this door connects
 }
 
-export interface Key {
+export enum TrashType {
+  APPLE_CORE = "apple_core",
+  BANANA_PEEL = "banana_peel", 
+  CARDBOARD_BOX = "cardboard_box",
+  FISH_BONES = "fish_bones",
+  GLASS_BOTTLE = "glass_bottle",
+  MILK_CARTON = "milk_carton",
+  NEWSPAPER = "newspaper",
+  PLASTIC_BOTTLE = "plastic_bottle",
+  SODA_CAN = "soda_can"
+}
+
+export interface Trash {
   id: string;
+  type: TrashType;
   position: Position;
   collected: boolean;
   roomId: string;
-  unlocksDoorsIds: string[];  // Door IDs this key unlocks
 }
 
 export interface Treasure {
   id: string;
   position: Position;
   roomId: string;
-  keysRequired: number;
+  trashRequired: number;
   claimed: boolean;
   claimedBy?: string;  // Player ID who claimed it
 }
@@ -50,8 +62,8 @@ export interface RoomState {
   position: RoomCoordinates;
   isLit: boolean;
   lightingState: LightingState;  // New: detailed lighting control
-  hasKey: boolean;
-  keyId?: string;
+  hasTrash: boolean;
+  trashId?: string;
   playerOccupancy: string[];  // Player IDs in room
   doors: Door[];             // Doors connected to this room
   objects: RoomObject[];     // Objects placed in this room
@@ -67,7 +79,7 @@ export interface MazeConfig {
 export interface MazeData {
   rooms: RoomState[];
   doors: Door[];
-  keys: Key[];
+  trash: Trash[];
   objects: RoomObject[];
   treasure: Treasure;
 }
@@ -126,14 +138,14 @@ export interface Player {
   id: string;
   position: Position;
   currentRoomId: string;
-  keysCollected: string[];
+  trashCollected: string[];
   isReady: boolean;
 }
 
 export interface GameState {
   rooms: Map<string, RoomState>;
   doors: Map<string, Door>;
-  keys: Map<string, Key>;
+  trash: Map<string, Trash>;
   players: Map<string, Player>;
   treasure: Treasure;
   gameStarted: boolean;

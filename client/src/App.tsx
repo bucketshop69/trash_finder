@@ -26,7 +26,7 @@ function App() {
     console.log('🚀 GAME STARTING - isHost:', isHost, 'roomId:', roomId)
     setGameState('playing')
     setGameTime(0)
-    
+
     // Enable networking and set player role in the game scene
     setTimeout(() => {
       // Access global scene for networking
@@ -35,20 +35,20 @@ function App() {
         console.log('🌐 Enabling networking for multiplayer game')
         console.log('🎭 Setting player role:', isHost ? 'HOST' : 'JOINER')
         console.log('🔍 isHost value:', isHost)
-        
+
         // Set player role first  
         console.log('🎯 About to call setPlayerRole with isHost:', isHost)
         if (gameScene.setPlayerRole) {
           gameScene.setPlayerRole(isHost)
         }
-        
+
         // Then enable networking
         if (gameScene.enableNetworking) {
           gameScene.enableNetworking()
         }
       }
     }, 500) // Small delay to ensure scene is ready
-    
+
     // Start game timer (will be managed by game logic later)
   }
 
@@ -96,13 +96,13 @@ function App() {
   useEffect(() => {
     if (gameState === 'waiting') {
       console.log('🎧 Setting up game start listener for both players...')
-      
+
       // Listen for players joining the room
       socketManager.onRoomJoin((data) => {
         console.log('👤 Player joined room, count:', data.playerCount)
         setPlayerCount(data.playerCount)
       })
-      
+
       // Cleanup function
       return () => {
         console.log('🧹 Cleaning up game start listener')
@@ -113,7 +113,7 @@ function App() {
   // Centralized event listener setup
   useEffect(() => {
     console.log('🎧 Setting up game event listeners')
-    
+
     const handleGameStart = (data: any) => {
       console.log('🎮 Game starting with both players!', data)
       console.log('🔍 State before handleStartGame - isHost:', isHost, 'roomId:', roomId)
@@ -150,7 +150,7 @@ function App() {
 
   const handleClaimWager = async () => {
     if (!winnerData?.wager || !roomId) return
-    
+
     const walletAddress = getConnectedWallet()
     if (!walletAddress) {
       console.error('Wallet not connected')
@@ -162,10 +162,10 @@ function App() {
       const tx = await buildClaimWagerTransaction(walletAddress, roomId)
       const signature = await signAndSendTransaction(tx.transaction, walletAddress)
       console.log('Wager claimed:', signature)
-      
+
       // Notify server
       socketManager.notifyWagerClaimed(walletAddress, roomId)
-      
+
       // Go back to lobby
       handleBackToMenu()
     } catch (error) {
@@ -180,9 +180,9 @@ function App() {
       {gameState === 'menu' && (
         <GameMenu onStartGame={handleEnterLobby} />
       )}
-      
+
       {gameState === 'lobby' && (
-        <GameLobby 
+        <GameLobby
           onCreateRoom={handleCreateRoom}
           onJoinRoom={handleJoinRoom}
           onBackToMenu={handleBackToMenu}
@@ -200,12 +200,12 @@ function App() {
                 ← Back to Lobby
               </button>
             </div>
-            
+
             <div className="bg-gray-800 rounded-lg p-8 max-w-md mx-auto">
               <h2 className="text-2xl font-bold mb-4 text-gorbagana-light">
                 {isHost ? 'Room Created!' : 'Joining Room...'}
               </h2>
-              
+
               <div className="mb-6">
                 <div className="text-sm text-gray-400 mb-2">Room ID:</div>
                 <div className="flex items-center gap-2">
@@ -226,7 +226,7 @@ function App() {
                   </div>
                 )}
               </div>
-              
+
               <div className="text-gray-300 mb-4">
                 <div className="mb-2">
                   Players: {playerCount}/2
@@ -235,13 +235,13 @@ function App() {
                   ⏱️ Waiting time: {Math.floor(waitingTime / 60)}:{(waitingTime % 60).toString().padStart(2, '0')}
                 </div>
                 <div>
-                  {isHost ? 
+                  {isHost ?
                     (playerCount === 1 ? 'Waiting for opponent to join...' : 'Opponent joined! Starting game...') :
                     'Connecting to room...'
                   }
                 </div>
               </div>
-              
+
               <div className="flex justify-center">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gorbagana-light"></div>
               </div>
@@ -249,17 +249,17 @@ function App() {
           </div>
         </div>
       )}
-      
+
       {gameState === 'playing' && (
         <div className="relative">
-          <GameHUD
+          {/* <GameHUD
             playerKeys={0}
             opponentKeys={0}
             gameTime={gameTime}
             playerName="You"
             opponentName="Opponent"
             onExitGame={handleExitGame}
-          />
+          /> */}
           <div className="flex justify-center pt-16">
             <GameCanvas />
           </div>
@@ -267,18 +267,18 @@ function App() {
       )}
 
       {gameState === 'winner' && (
-        <div style={{display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1a1a1a', color: 'white'}}>
-          <div style={{textAlign: 'center', background: '#2a2a2a', padding: '40px', borderRadius: '10px', maxWidth: '500px'}}>
-            <h1 style={{fontSize: '48px', marginBottom: '20px'}}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', background: '#1a1a1a', color: 'white' }}>
+          <div style={{ textAlign: 'center', background: '#2a2a2a', padding: '40px', borderRadius: '10px', maxWidth: '500px' }}>
+            <h1 style={{ fontSize: '48px', marginBottom: '20px' }}>
               {winnerData?.winnerId === socketManager.getPlayerId() ? '🏆 You Won!' : '😔 You Lost'}
             </h1>
-            
+
             {winnerData?.wager && winnerData?.winnerId === socketManager.getPlayerId() && (
               <div>
-                <div style={{fontSize: '24px', margin: '20px 0', color: '#f60'}}>
+                <div style={{ fontSize: '24px', margin: '20px 0', color: '#f60' }}>
                   💰 Claim Your Wager: {winnerData.wager.amount * 2} GOR
                 </div>
-                
+
                 <button
                   onClick={handleClaimWager}
                   disabled={isClaiming}
@@ -297,15 +297,15 @@ function App() {
                 </button>
               </div>
             )}
-            
-            <div style={{margin: '20px 0'}}>
+
+            <div style={{ margin: '20px 0' }}>
               <div>Game Time: {winnerData?.gameTime || 0}s</div>
               <div>Winner: {winnerData?.winnerWallet?.slice(0, 8)}...</div>
             </div>
-            
+
             <button
               onClick={handleBackToMenu}
-              style={{padding: '10px 20px', background: '#666', color: 'white', border: 'none', borderRadius: '5px'}}
+              style={{ padding: '10px 20px', background: '#666', color: 'white', border: 'none', borderRadius: '5px' }}
             >
               Back to Menu
             </button>
