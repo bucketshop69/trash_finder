@@ -2376,7 +2376,7 @@ export class MazeScene extends Phaser.Scene {
     // Check win condition (3 trash collected)
     if (this.collectedTrash.size >= 3) {
       console.log(`🏆 Player collected 3 trash items! Game won!`);
-      this.handleGameWin('local-player');
+      // this.handleGameWin('local-player');
     }
 
     console.log(`✅ Trash collected locally: ${trashId} (${this.collectedTrash.size}/3)`);
