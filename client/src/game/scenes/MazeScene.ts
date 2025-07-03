@@ -66,16 +66,16 @@ export class MazeScene extends Phaser.Scene {
 
   preload() {
     // Load player SVG assets
-    this.load.svg('player1', '/src/assets/players/player1.svg');
-    this.load.svg('player2', '/src/assets/players/player2.svg');
+    this.load.svg('player1', '/assets/players/player1.svg');
+    this.load.svg('player2', '/assets/players/player2.svg');
 
     // Load trash SVG assets
-    this.load.svg('apple_core', '/src/assets/trash/apple_core.svg');
-    this.load.svg('banana_peel', '/src/assets/trash/banana_peel.svg');
-    this.load.svg('cardboard_box', '/src/assets/trash/cardboard_box.svg');
-    this.load.svg('fish_bones', '/src/assets/trash/fish_bones.svg');
-    this.load.svg('glass_bottle', '/src/assets/trash/glass_bottle.svg');
-    this.load.svg('milk_carton', '/src/assets/trash/milk_carton.svg');
+    this.load.svg('apple_core', '/assets/trash/apple_core.svg');
+    this.load.svg('banana_peel', '/assets/trash/banana_peel.svg');
+    this.load.svg('cardboard_box', '/assets/trash/cardboard_box.svg');
+    this.load.svg('fish_bones', '/assets/trash/fish_bones.svg');
+    this.load.svg('glass_bottle', '/assets/trash/glass_bottle.svg');
+    this.load.svg('milk_carton', '/assets/trash/milk_carton.svg');
 
     // Keep key placeholder for collision detection
     this.load.image('key', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==');

@@ -234,11 +234,11 @@ export class GameRoom {
           timestamp: Date.now()
         });
 
-        // Check if player has enough trash to win (3 trash = victory)
+        // Check if player has enough trash to potentially win
         console.log(`🗑️ Player ${playerId} now has ${player.trashCollected}/${this.gameState.getRequiredTrash()} trash`);
         if (player.trashCollected >= this.gameState.getRequiredTrash()) {
-          console.log(`🏆 Player ${playerId} has enough trash to win!`);
-          this.handlePlayerWin(playerId);
+          console.log(`🏆 Player ${playerId} has enough trash! Go to center trash bin and press space to win!`);
+          // Don't win immediately - player must go to center and press space
         }
       } else {
         // Trash collection failed - send error to specific player
