@@ -54,6 +54,10 @@ export class SocketHandler {
         this.handleWagerClaimed(socket, data);
       });
 
+      socket.on('get_room_info', (data) => {
+        this.handleGetRoomInfo(socket, data);
+      });
+
       // Handle game actions
       socket.on('player_move', (data) => {
         this.handlePlayerMove(socket, data);
@@ -223,6 +227,8 @@ export class SocketHandler {
     if (room) {
       room.markPlayerStaked(walletAddress);
       
+      console.log(`🔍 Room ${roomId} status: ${room.getPlayerCount()}/${2} players, all staked: ${room.allPlayersStaked()}`);
+      
       // Notify room about staking
       this.io.to(roomId).emit('player_staked', {
         walletAddress,
@@ -231,8 +237,13 @@ export class SocketHandler {
       
       // Try to start game if all players staked
       if (room.isFull() && room.allPlayersStaked()) {
+        console.log(`🎮 Starting game in room ${roomId} - both players staked!`);
         room.startGame();
+      } else {
+        console.log(`⏳ Not starting game: isFull=${room.isFull()}, allStaked=${room.allPlayersStaked()}`);
       }
+    } else {
+      console.log(`❌ Room ${roomId} not found for staking`);
     }
   }
 
@@ -243,13 +254,9 @@ export class SocketHandler {
     
     this.gameRooms.forEach((room, roomId) => {
       const unclaimed = room.getUnclaimedWager(walletAddress);
-      if (unclaimed > 0) {
-        totalUnclaimed += unclaimed;
-        unclaimedWagers.push({
-          roomId,
-          amount: unclaimed,
-          gameWagerPDA: room.getWager()?.gameWagerPDA
-        });
+      if (unclaimed) {
+        totalUnclaimed += unclaimed.amount;
+        unclaimedWagers.push(unclaimed);
       }
     });
     
@@ -266,8 +273,38 @@ export class SocketHandler {
     const room = this.gameRooms.get(roomId);
     
     if (room) {
-      room.clearUnclaimedWager(walletAddress);
-      console.log(`✅ Cleared unclaimed wager for ${walletAddress} in room ${roomId}`);
+      const claimed = room.claimWager(walletAddress);
+      if (claimed) {
+        console.log(`✅ Wager claimed for ${walletAddress} in room ${roomId}`);
+        socket.emit('wager_claim_success', { roomId, walletAddress });
+      } else {
+        console.log(`❌ No unclaimed wager found for ${walletAddress} in room ${roomId}`);
+        socket.emit('wager_claim_error', { message: 'No unclaimed wager found' });
+      }
+    } else {
+      socket.emit('wager_claim_error', { message: 'Room not found' });
+    }
+  }
+
+  private handleGetRoomInfo(socket: Socket, data: any) {
+    console.log(`🔍 Player ${socket.id} requesting room info:`, data);
+    
+    const { roomId } = data;
+    const room = this.gameRooms.get(roomId);
+    
+    if (room) {
+      const roomInfo = room.getRoomInfo();
+      socket.emit('room_info', {
+        ...roomInfo,
+        exists: true
+      });
+      console.log(`✅ Sent room info for ${roomId}:`, roomInfo);
+    } else {
+      socket.emit('room_not_found', {
+        roomId,
+        message: 'Room not found or no longer available'
+      });
+      console.log(`❌ Room ${roomId} not found`);
     }
   }
 

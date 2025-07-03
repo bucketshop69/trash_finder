@@ -55,6 +55,9 @@ export class GameRoom {
       return false;
     }
 
+    // TEMP: Allow same wallet for testing
+    console.log(`🧪 TEST MODE: Allowing duplicate wallet ${walletAddress}`);
+
     const player: Player = {
       id: playerId,
       walletAddress,
@@ -384,7 +387,8 @@ export class GameRoom {
   }
 
   public markPlayerStaked(walletAddress: string): void {
-    const player = Array.from(this.players.values()).find(p => p.walletAddress === walletAddress);
+    // TEMP: For testing with same wallet, mark the first unstaked player
+    const player = Array.from(this.players.values()).find(p => p.walletAddress === walletAddress && !p.hasStaked);
     if (player) {
       player.hasStaked = true;
       console.log(`✅ Player ${walletAddress} has staked in room ${this.id}`);
@@ -393,6 +397,8 @@ export class GameRoom {
       if (this.wager && this.wager.playerTwo === null && walletAddress !== this.wager.playerOne) {
         this.wager.playerTwo = walletAddress;
       }
+    } else {
+      console.log(`❌ No unstaked player found with wallet ${walletAddress}`);
     }
   }
 
@@ -402,9 +408,6 @@ export class GameRoom {
     return Array.from(this.players.values()).every(player => player.hasStaked);
   }
 
-  public getUnclaimedWager(walletAddress: string): number {
-    return this.unclaimed.get(walletAddress) || 0;
-  }
 
   public clearUnclaimedWager(walletAddress: string): void {
     this.unclaimed.delete(walletAddress);
@@ -422,5 +425,26 @@ export class GameRoom {
         playersStaked: Array.from(this.players.values()).filter(p => p.hasStaked).length
       } : null
     };
+  }
+
+  public getUnclaimedWager(walletAddress: string): any | null {
+    const amount = this.unclaimed.get(walletAddress);
+    if (amount) {
+      return {
+        roomId: this.id,
+        amount: amount,
+        gameWagerPDA: this.wager?.gameWagerPDA || null
+      };
+    }
+    return null;
+  }
+
+  public claimWager(walletAddress: string): boolean {
+    if (this.unclaimed.has(walletAddress)) {
+      this.unclaimed.delete(walletAddress);
+      console.log(`✅ Wager claimed for ${walletAddress} in room ${this.id}`);
+      return true;
+    }
+    return false;
   }
 }

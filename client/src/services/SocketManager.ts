@@ -216,6 +216,16 @@ export class SocketManager {
     });
   }
 
+  public getRoomInfo(roomId: string): void {
+    if (!this.isConnected || !this.socket) return;
+
+    console.log(`🔍 Getting room info for: ${roomId}`);
+    this.socket.emit('get_room_info', {
+      roomId,
+      timestamp: Date.now()
+    });
+  }
+
   // Event Listener Setup
   private setupGameEventListeners(): void {
     if (!this.socket) return;
@@ -261,7 +271,8 @@ export class SocketManager {
     });
 
     this.socket.on('game_won', (data) => {
-      console.log('🏆 Game won!', data);
+      console.log('🏆 SOCKET: Game won event received!', data);
+      console.log('🏆 SOCKET: Calling onGameWon callback:', !!this.onGameWon);
       this.onGameWon?.(data);
     });
 
@@ -297,6 +308,14 @@ export class SocketManager {
 
     this.socket.on('unclaimed_wagers', (data) => {
       console.log('💰 Unclaimed wagers:', data);
+    });
+
+    this.socket.on('room_info', (data) => {
+      console.log('🔍 Room info:', data);
+    });
+
+    this.socket.on('room_not_found', (data) => {
+      console.log('❌ Room not found:', data);
     });
   }
 

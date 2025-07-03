@@ -1,5 +1,10 @@
 # Gorbagana Game Server
 
+## TL;DR
+Node.js server for real-time 1v1 maze matches, player matchmaking, and blockchain wager facilitation. Powers the Gorbagana Trash Finder multiplayer experience.
+
+---
+
 Multiplayer game server for Gorbagana Trash Finder.
 
 ## Tech Stack
@@ -29,4 +34,5 @@ npm run start   # Start production server
 - Real-time 1v1 multiplayer rooms
 - Game state synchronization
 - Player matching system
-- Gorbagana token integration
+- Gorbagana token wager and reward logic
+- Blockchain transaction relay (P2P, no server custody)

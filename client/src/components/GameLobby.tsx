@@ -26,6 +26,9 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
   const [error, setError] = useState('');
   const [roomTimer, setRoomTimer] = useState<number>(0);
   const [createdRoomId, setCreatedRoomId] = useState<string | null>(null);
+  const [roomInfo, setRoomInfo] = useState<any>(null);
+  const [isValidatingRoom, setIsValidatingRoom] = useState(false);
+  const [unclaimedWagers, setUnclaimedWagers] = useState<any[]>([]);
 
   const handleCreateRoom = async () => {
     // Check wallet connection first
@@ -136,12 +139,50 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
     }
   };
 
-  const handleJoinExistingRoom = async () => {
+  const handleValidateRoom = async () => {
     if (!joinRoomId.trim()) {
       setError('Please enter a room ID');
       return;
     }
 
+    setIsValidatingRoom(true);
+    setError('');
+    setRoomInfo(null);
+    
+    try {
+      await socketManager.connect();
+      
+      const socket = socketManager.getSocket();
+      if (!socket) {
+        setError('Socket not available');
+        setIsValidatingRoom(false);
+        return;
+      }
+
+      // Listen for room info response
+      socket.on('room_info', (data) => {
+        console.log('🔍 Room info received:', data);
+        setRoomInfo(data);
+        setIsValidatingRoom(false);
+      });
+
+      socket.on('room_not_found', (data) => {
+        setError(data.message);
+        setIsValidatingRoom(false);
+        setRoomInfo(null);
+      });
+
+      // Request room info
+      socketManager.getRoomInfo(joinRoomId);
+      
+    } catch (error) {
+      console.error('Failed to validate room:', error);
+      setError('Failed to validate room: ' + (error as Error).message);
+      setIsValidatingRoom(false);
+    }
+  };
+
+  const handleJoinExistingRoom = async () => {
     if (!walletAddress) {
       setError('Please connect your wallet first');
       return;
@@ -151,7 +192,6 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
     setError('');
     
     try {
-      // Connect to server
       await socketManager.connect();
       
       socketManager.joinRoom(joinRoomId, walletAddress);
@@ -159,14 +199,9 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
       // Listen for room join
       socketManager.onRoomJoin((data) => {
         console.log('🏠 Joined room:', data.roomId);
-        
-        // Check if this is a wager room
-        if (data.wager) {
-          handleJoinWager(data.roomId, data.wager.amount);
-        }
-        
         onJoinRoom(data.roomId);
         setIsConnecting(false);
+        setRoomInfo(null);
       });
       
       const socket = socketManager.getSocket();
@@ -191,21 +226,82 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
         return;
       }
 
-      // Show confirmation
-      const confirmed = confirm(`Join wager for ${wagerAmount} GOR?`);
-      if (!confirmed) return;
+      // No confirmation needed - user already confirmed by clicking the button
 
       // Build and send join wager transaction
       const tx = await buildJoinWagerTransaction(walletAddress, roomId, wagerAmount);
       const signature = await signAndSendTransaction(tx.transaction, walletAddress);
       console.log('Joined wager:', signature);
       
-      // Notify server
-      socketManager.notifyPlayerStaked(walletAddress, roomId);
+      // First join the room, then notify staked
+      socketManager.joinRoom(roomId, walletAddress);
+      
+      // Wait a moment for room join to complete, then notify staked
+      setTimeout(() => {
+        socketManager.notifyPlayerStaked(walletAddress, roomId);
+      }, 500);
+      
+      // Redirect to game after successful wager join
+      onJoinRoom(roomId);
+      setRoomInfo(null);
       
     } catch (error) {
       console.error('Failed to join wager:', error);
       setError('Failed to join wager: ' + (error as Error).message);
+    }
+  };
+
+  // Check for unclaimed wagers when wallet connects
+  useEffect(() => {
+    if (walletAddress) {
+      checkUnclaimedWagers();
+    }
+  }, [walletAddress]);
+
+  const checkUnclaimedWagers = async () => {
+    if (!walletAddress) return;
+    
+    try {
+      await socketManager.connect();
+      socketManager.getUnclaimedWagers(walletAddress);
+      
+      // Listen for response
+      const socket = socketManager.getSocket();
+      socket?.on('unclaimed_wagers', (data) => {
+        console.log('📋 Unclaimed wagers:', data);
+        setUnclaimedWagers(data.wagers || []);
+      });
+      
+    } catch (error) {
+      console.error('Failed to check unclaimed wagers:', error);
+    }
+  };
+
+  const handleClaimWager = async (roomId: string) => {
+    try {
+      console.log('🏆 Claiming wager for room:', roomId);
+      
+      await socketManager.connect();
+      
+      // Listen for claim responses
+      const socket = socketManager.getSocket();
+      socket?.on('wager_claim_success', (data) => {
+        console.log('✅ Wager claim success:', data);
+        setUnclaimedWagers(prev => prev.filter(w => w.roomId !== data.roomId));
+        setError(''); // Clear any previous errors
+      });
+      
+      socket?.on('wager_claim_error', (data) => {
+        console.error('❌ Wager claim error:', data);
+        setError('Failed to claim wager: ' + data.message);
+      });
+      
+      // Notify server
+      socketManager.notifyWagerClaimed(walletAddress, roomId);
+      
+    } catch (error) {
+      console.error('Failed to claim wager:', error);
+      setError('Failed to claim wager: ' + (error as Error).message);
     }
   };
 
@@ -255,6 +351,31 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
               <WalletConnect onConnect={setWalletAddress} showBalance={true} />
             </div>
 
+            {/* Unclaimed Wagers Section */}
+            {unclaimedWagers.length > 0 && (
+              <div>
+                <h2 className="text-xl font-semibold mb-4 text-gorbagana-accent">🏆 Unclaimed Winnings</h2>
+                <div className="bg-gray-800 p-4 rounded-lg space-y-3">
+                  {unclaimedWagers.map((wager, index) => (
+                    <div key={index} className="bg-gray-700 p-3 rounded border border-gorbagana-accent">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <div className="font-semibold text-gorbagana-light">💰 {wager.amount} GOR</div>
+                          <div className="text-sm text-gray-400">Room: {wager.roomId}</div>
+                        </div>
+                        <button
+                          className="bg-gorbagana-accent hover:bg-orange-600 px-4 py-2 rounded transition-colors"
+                          onClick={() => handleClaimWager(wager.roomId)}
+                        >
+                          Claim
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div>
               <h2 className="text-xl font-semibold mb-4">Game Actions</h2>
               
@@ -275,8 +396,17 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
               {createdRoomId && (
                 <div style={{background: '#e8f5e8', border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', margin: '10px 0'}}>
                   <h4>🎯 Wager Room Created!</h4>
-                  <div style={{fontFamily: 'monospace', background: '#f0f0f0', padding: '8px', margin: '8px 0'}}>
-                    Room ID: {createdRoomId}
+                  <div style={{display: 'flex', alignItems: 'center', gap: '8px', margin: '8px 0'}}>
+                    <div style={{fontFamily: 'monospace', background: '#f0f0f0', padding: '8px', flex: 1}}>
+                      Room ID: {createdRoomId}
+                    </div>
+                    <button
+                      onClick={() => navigator.clipboard.writeText(createdRoomId || '')}
+                      style={{padding: '8px 12px', background: '#4a90e2', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}
+                      title="Copy Room ID"
+                    >
+                      📋
+                    </button>
                   </div>
                   <div style={{fontSize: '14px', color: '#666'}}>
                     ⏱️ Waiting for opponent: {Math.floor(roomTimer / 60)}:{(roomTimer % 60).toString().padStart(2, '0')}
@@ -346,12 +476,49 @@ const GameLobby = ({ onCreateRoom, onJoinRoom, onBackToMenu }: GameLobbyProps) =
                       disabled={isConnecting}
                     />
                     <button
-                      onClick={handleJoinExistingRoom}
-                      disabled={isConnecting || !joinRoomId.trim() || !walletAddress}
-                      style={{width: '100%', padding: '12px'}}
+                      onClick={handleValidateRoom}
+                      disabled={isValidatingRoom || !joinRoomId.trim()}
+                      style={{width: '100%', padding: '12px', marginBottom: '10px'}}
                     >
-                      {isConnecting ? 'Joining...' : 'Join Room'}
+                      {isValidatingRoom ? 'Checking Room...' : 'Check Room'}
                     </button>
+                    
+                    {roomInfo && (
+                      <div style={{border: '1px solid #4a90e2', padding: '15px', borderRadius: '5px', background: '#f8f9fa'}}>
+                        <h4>🎯 Room Found!</h4>
+                        <div>Players: {roomInfo.playerCount}/{roomInfo.maxPlayers}</div>
+                        <div>Status: {roomInfo.gameStarted ? 'In Game' : 'Waiting'}</div>
+                        
+                        {roomInfo.wager ? (
+                          <div>
+                            <div style={{color: '#f60', fontWeight: 'bold'}}>
+                              💰 Wager Game: {roomInfo.wager.amount} GOR
+                            </div>
+                            <div style={{fontSize: '12px', margin: '5px 0'}}>
+                              Staked players: {roomInfo.wager.playersStaked}/2
+                            </div>
+                            <button
+                              onClick={() => handleJoinWager(joinRoomId, roomInfo.wager.amount)}
+                              disabled={!walletAddress}
+                              style={{width: '100%', padding: '12px', background: '#f60', color: 'white', marginTop: '10px'}}
+                            >
+                              Join Wager: {roomInfo.wager.amount} GOR
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <div style={{color: '#4a90e2'}}>🆓 Free Game</div>
+                            <button
+                              onClick={handleJoinExistingRoom}
+                              disabled={isConnecting || !walletAddress}
+                              style={{width: '100%', padding: '12px', background: '#4a90e2', color: 'white', marginTop: '10px'}}
+                            >
+                              {isConnecting ? 'Joining...' : 'Join Free Game'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

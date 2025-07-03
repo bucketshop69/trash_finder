@@ -1,11 +1,8 @@
 import { Connection, PublicKey } from '@solana/web3.js';
-import { AnchorProvider, Program, Wallet } from '@coral-xyz/anchor';
 
-// Gorbagana Testnet Configuration
-export const GORBAGANA_RPC_URL = process.env.GORBAGANA_RPC_URL || 'https://rpc.gorbagana.wtf/';
-export const GORBAGANA_PROGRAM_ID = new PublicKey(
-  process.env.GORBAGANA_PROGRAM_ID || 'ASRy3mvEcwWzPFNZVJubdnm6XhMTdjSYPPZ48rexm3hB'
-);
+// Gorbagana Testnet Configuration - Hardcoded for deployment
+export const GORBAGANA_RPC_URL = 'https://rpc.gorbagana.wtf/';
+export const GORBAGANA_PROGRAM_ID = new PublicKey('ASRy3mvEcwWzPFNZVJubdnm6XhMTdjSYPPZ48rexm3hB');
 
 // Connection singleton
 let connection: Connection | null = null;
@@ -36,3 +33,9 @@ export function validateRoomId(roomId: string): boolean {
 export function generateRoomId(): string {
   return `room-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`;
 }
+
+// NOTE: Server authority and smart contract integration removed
+// Wager claiming is now handled as simple in-memory tracking
+
+// NOTE: Wager claiming is now handled manually from the lobby
+// Auto-claiming has been removed for better user control

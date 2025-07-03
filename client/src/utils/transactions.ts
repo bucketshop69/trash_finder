@@ -186,48 +186,13 @@ export async function buildJoinWagerTransaction(
 }
 
 // Task 2.2.4: Build claimWager transaction for winners
+// NOTE: Wager claiming is now handled server-side automatically
 export async function buildClaimWagerTransaction(
   walletAddress: string,
   roomId: string
 ): Promise<TransactionResult> {
-  try {
-    const connection = getConnection();
-    const winner = new PublicKey(walletAddress);
-    
-    // Derive the PDA
-    const [gameWagerPDA] = deriveGameWagerPDA(roomId);
-    
-    // Get the wager account balance
-    const wagerBalance = await connection.getBalance(gameWagerPDA);
-    
-    if (wagerBalance === 0) {
-      throw new Error('No wager funds to claim');
-    }
-    
-    // Build transfer instruction to claim all funds
-    const claimInstruction = SystemProgram.transfer({
-      fromPubkey: gameWagerPDA,
-      toPubkey: winner,
-      lamports: wagerBalance
-    });
-    
-    const transaction = new Transaction();
-    transaction.add(claimInstruction);
-    
-    // Get recent blockhash
-    const { blockhash } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = winner;
-    
-    return {
-      transaction,
-      gameWagerPDA
-    };
-    
-  } catch (error) {
-    console.error('Failed to build claimWager transaction:', error);
-    throw new Error(`Failed to claim wager: ${(error as Error).message}`);
-  }
+  console.log('ℹ️ Wager claiming is now automatic - no client transaction needed');
+  throw new Error('Wager claiming is handled automatically by the server');
 }
 
 // Task 2.2.5: Transaction signing and confirmation logic
