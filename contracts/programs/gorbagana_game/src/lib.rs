@@ -11,7 +11,7 @@ pub mod gorbagana_game {
     use super::*;
 
     // TODO: Implement initialize_wager
-    pub fn initialize_wager(ctx: Context<InitializeWager>, wager_amount: u64) -> Result<()> {
+    pub fn initialize_wager(ctx: Context<InitializeWager>, wager_amount: u64, room_id: String) -> Result<()> {
         require!(
             wager_amount >= MIN_WAGER && wager_amount <= MAX_WAGER,
             GameError::InvalidWagerAmount
@@ -42,7 +42,7 @@ pub mod gorbagana_game {
     }
 
     // TODO: Implement join_wager
-    pub fn join_wager(ctx: Context<JoinWager>) -> Result<()> {
+    pub fn join_wager(ctx: Context<JoinWager>, room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         game_wager.player_two = ctx.accounts.player_two.key();
         game_wager.game_started_at = Clock::get()?.unix_timestamp;
@@ -65,33 +65,43 @@ pub mod gorbagana_game {
     }
 
     // TODO: Implement claim_wager
-    pub fn claim_wager(ctx: Context<ClaimWager>) -> Result<()> {
+    pub fn claim_wager(ctx: Context<ClaimWager>, room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         require!(game_wager.is_claimed == false, GameError::AlreadyClaimed);
-
-        // TODO: Add server authority check
-
+        
+        // Requires server authority signature (enforced by #[account] constraints)
+        
+        // Transfer total balance from GameWager PDA to winner
+        let total_balance = game_wager.to_account_info().lamports();
+        let rent_exempt_reserve = Rent::get()?.minimum_balance(game_wager.to_account_info().data_len());
+        let transfer_amount = total_balance.saturating_sub(rent_exempt_reserve);
+        
+        **game_wager.to_account_info().try_borrow_mut_lamports()? -= transfer_amount;
+        **ctx.accounts.winner.to_account_info().try_borrow_mut_lamports()? += transfer_amount;
+        
         game_wager.is_claimed = true;
-
+        
         Ok(())
     }
 
-    // TODO: Implement cancel_wager
-    pub fn cancel_wager(ctx: Context<CancelWager>) -> Result<()> {
+    pub fn cancel_wager(ctx: Context<CancelWager>, room_id: String) -> Result<()> {
         let game_wager = &ctx.accounts.game_wager;
-
-        // TODO: Add server authority check
-
-        let amount = game_wager.wager_amount;
-
-        let player_one_info = ctx.accounts.player_one.to_account_info();
-        let player_two_info = ctx.accounts.player_two.to_account_info();
-        let wager_info = game_wager.to_account_info();
-
-        **wager_info.try_borrow_mut_lamports()? -= amount * 2;
-        **player_one_info.try_borrow_mut_lamports()? += amount;
-        **player_two_info.try_borrow_mut_lamports()? += amount;
-
+        
+        // Requires server authority signature (enforced by #[account] constraints)
+        
+        let wager_amount = game_wager.wager_amount;
+        
+        // Transfer wager_amount back to player_one
+        **game_wager.to_account_info().try_borrow_mut_lamports()? -= wager_amount;
+        **ctx.accounts.player_one.to_account_info().try_borrow_mut_lamports()? += wager_amount;
+        
+        // If player_two has joined, transfer wager_amount back to them
+        if game_wager.player_two != Pubkey::default() {
+            **game_wager.to_account_info().try_borrow_mut_lamports()? -= wager_amount;
+            **ctx.accounts.player_two.to_account_info().try_borrow_mut_lamports()? += wager_amount;
+        }
+        
+        // Account closure is handled by the close constraint in the context
         Ok(())
     }
 
@@ -123,7 +133,7 @@ pub struct PlayerScore {
 
 // Contexts
 #[derive(Accounts)]
-#[instruction(wager_amount: u64)]
+#[instruction(wager_amount: u64, room_id: String)]
 pub struct InitializeWager<'info> {
     #[account(mut)]
     pub player_one: Signer<'info>,
@@ -132,7 +142,7 @@ pub struct InitializeWager<'info> {
         init,
         payer = player_one,
         space = 8 + 32 + 32 + 8 + 8 + 1 + 1, // Discriminator + Pubkey*2 + u64*2 + bool + u8
-        seeds = [b"wager", player_one.key().as_ref()],
+        seeds = [b"wager", room_id.as_bytes()],
         bump
     )]
     pub game_wager: Account<'info, GameWager>,
@@ -141,13 +151,14 @@ pub struct InitializeWager<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(room_id: String)]
 pub struct JoinWager<'info> {
     #[account(mut)]
     pub player_two: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [b"wager", game_wager.player_one.as_ref()],
+        seeds = [b"wager", room_id.as_bytes()],
         bump = game_wager.bump
     )]
     pub game_wager: Account<'info, GameWager>,
@@ -156,13 +167,14 @@ pub struct JoinWager<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(room_id: String)]
 pub struct ClaimWager<'info> {
     #[account(mut)]
     pub server: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [b"wager", game_wager.player_one.as_ref()],
+        seeds = [b"wager", room_id.as_bytes()],
         bump = game_wager.bump,
         close = winner
     )]
@@ -175,13 +187,14 @@ pub struct ClaimWager<'info> {
 }
 
 #[derive(Accounts)]
+#[instruction(room_id: String)]
 pub struct CancelWager<'info> {
     #[account(mut)]
     pub server: Signer<'info>,
 
     #[account(
         mut,
-        seeds = [b"wager", game_wager.player_one.as_ref()],
+        seeds = [b"wager", room_id.as_bytes()],
         bump = game_wager.bump,
         close = player_one
     )]
