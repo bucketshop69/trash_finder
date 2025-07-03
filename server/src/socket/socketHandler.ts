@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io';
 import { GameRoom } from '../game/GameRoom';
+import { generateRoomId } from '../blockchain/config';
 
 export class SocketHandler {
   private io: Server;
@@ -26,6 +27,11 @@ export class SocketHandler {
         this.handleJoinQueue(socket, data);
       });
 
+      // Handle creating wager room
+      socket.on('create_wager_room', (data) => {
+        this.handleCreateWagerRoom(socket, data);
+      });
+
       // Handle player leaving queue
       socket.on('leave_queue', () => {
         this.handleLeaveQueue(socket);
@@ -33,6 +39,19 @@ export class SocketHandler {
 
       socket.on('join_room', (data) => {
         this.handleJoinRoom(socket, data);
+      });
+
+      // Handle blockchain events
+      socket.on('player_staked', (data) => {
+        this.handlePlayerStaked(socket, data);
+      });
+
+      socket.on('get_unclaimed_wagers', (data) => {
+        this.handleGetUnclaimedWagers(socket, data);
+      });
+
+      socket.on('wager_claimed', (data) => {
+        this.handleWagerClaimed(socket, data);
       });
 
       // Handle game actions
@@ -59,12 +78,12 @@ export class SocketHandler {
   private handleJoinQueue(socket: Socket, data: any) {
     console.log(`🔍 Player ${socket.id} joining queue:`, data);
     
-    // Find available room or create new one
+    // Find available room or create new one (no wager)
     let availableRoom = this.findAvailableRoom();
     
     if (!availableRoom) {
-      // Create new room
-      const roomId = `room_${Date.now()}`;
+      // Create new room without wager
+      const roomId = generateRoomId();
       availableRoom = new GameRoom(roomId, this.io);
       this.gameRooms.set(roomId, availableRoom);
       console.log(`🏠 Created new room: ${roomId}`);
@@ -86,6 +105,39 @@ export class SocketHandler {
       }
     } else {
       socket.emit('queue_error', { message: 'Failed to join room' });
+    }
+  }
+
+  private handleCreateWagerRoom(socket: Socket, data: any) {
+    console.log(`💰 Player ${socket.id} creating wager room:`, data);
+    
+    const { walletAddress, wagerAmount } = data;
+    
+    if (!walletAddress || !wagerAmount || wagerAmount <= 0) {
+      socket.emit('wager_room_error', { message: 'Invalid wager amount or wallet address' });
+      return;
+    }
+
+    // Create wager room
+    const roomId = generateRoomId();
+    const wagerRoom = new GameRoom(roomId, this.io, wagerAmount);
+    this.gameRooms.set(roomId, wagerRoom);
+    
+    // Add creator to room
+    const joined = wagerRoom.addPlayer(socket.id, walletAddress);
+    
+    if (joined) {
+      socket.join(roomId);
+      socket.emit('wager_room_created', {
+        roomId,
+        wagerAmount,
+        gameWagerPDA: wagerRoom.getWager()?.gameWagerPDA,
+        playerCount: wagerRoom.getPlayerCount()
+      });
+      
+      console.log(`💰 Created wager room: ${roomId} with ${wagerAmount} GOR`);
+    } else {
+      socket.emit('wager_room_error', { message: 'Failed to create wager room' });
     }
   }
 
@@ -162,13 +214,88 @@ export class SocketHandler {
     this.handleLeaveQueue(socket);
   }
 
+  private handlePlayerStaked(socket: Socket, data: any) {
+    console.log(`💎 Player ${socket.id} staked:`, data);
+    
+    const { walletAddress, roomId } = data;
+    const room = this.gameRooms.get(roomId);
+    
+    if (room) {
+      room.markPlayerStaked(walletAddress);
+      
+      // Notify room about staking
+      this.io.to(roomId).emit('player_staked', {
+        walletAddress,
+        playersStaked: room.allPlayersStaked()
+      });
+      
+      // Try to start game if all players staked
+      if (room.isFull() && room.allPlayersStaked()) {
+        room.startGame();
+      }
+    }
+  }
+
+  private handleGetUnclaimedWagers(socket: Socket, data: any) {
+    const { walletAddress } = data;
+    let totalUnclaimed = 0;
+    const unclaimedWagers: any[] = [];
+    
+    this.gameRooms.forEach((room, roomId) => {
+      const unclaimed = room.getUnclaimedWager(walletAddress);
+      if (unclaimed > 0) {
+        totalUnclaimed += unclaimed;
+        unclaimedWagers.push({
+          roomId,
+          amount: unclaimed,
+          gameWagerPDA: room.getWager()?.gameWagerPDA
+        });
+      }
+    });
+    
+    socket.emit('unclaimed_wagers', {
+      totalUnclaimed,
+      wagers: unclaimedWagers
+    });
+  }
+
+  private handleWagerClaimed(socket: Socket, data: any) {
+    console.log(`🏆 Player ${socket.id} claimed wager:`, data);
+    
+    const { walletAddress, roomId } = data;
+    const room = this.gameRooms.get(roomId);
+    
+    if (room) {
+      room.clearUnclaimedWager(walletAddress);
+      console.log(`✅ Cleared unclaimed wager for ${walletAddress} in room ${roomId}`);
+    }
+  }
+
   private findAvailableRoom(): GameRoom | null {
     for (const room of this.gameRooms.values()) {
-      if (!room.isFull()) {
+      if (!room.isFull() && !room.getWager()) {
         return room;
       }
     }
     return null;
+  }
+
+  public getAvailableWagerRooms(): any[] {
+    const wagerRooms: any[] = [];
+    
+    this.gameRooms.forEach((room, roomId) => {
+      const wager = room.getWager();
+      if (wager && !room.isFull()) {
+        wagerRooms.push({
+          roomId,
+          wagerAmount: wager.amount,
+          gameWagerPDA: wager.gameWagerPDA,
+          playerCount: room.getPlayerCount()
+        });
+      }
+    });
+    
+    return wagerRooms;
   }
 
   public getRoomCount(): number {
@@ -181,5 +308,13 @@ export class SocketHandler {
       count += room.getPlayerCount();
     });
     return count;
+  }
+
+  public getAllRooms(): any[] {
+    const rooms: any[] = [];
+    this.gameRooms.forEach((room, roomId) => {
+      rooms.push(room.getRoomInfo());
+    });
+    return rooms;
   }
 }

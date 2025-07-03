@@ -1,0 +1,59 @@
+# Build outputs
+target/
+.anchor/
+dist/
+
+# IDL files (auto-generated)
+target/idl/
+target/types/
+
+# Keypairs (security - never commit)
+*.json
+!package.json
+!tsconfig.json
+
+# Node modules
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test artifacts
+test-ledger/
+.coverage/
+
+# Anchor specific
+programs/**/target/
+programs/**/.anchor/
+
+# Rust specific
+**/*.rs.bk
+Cargo.lock
+
+# TypeScript/JavaScript
+*.tsbuildinfo
+.nyc_output

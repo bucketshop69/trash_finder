@@ -10,7 +10,7 @@ const MAX_WAGER: u64 = 1000000; // 1 token
 pub mod gorbagana_game {
     use super::*;
 
-    pub fn initialize_wager(ctx: Context<InitializeWager>, wager_amount: u64, room_id: String) -> Result<()> {
+    pub fn initialize_wager(ctx: Context<InitializeWager>, wager_amount: u64, _room_id: String) -> Result<()> {
         require!(
             wager_amount >= MIN_WAGER && wager_amount <= MAX_WAGER,
             GameError::InvalidWagerAmount
@@ -21,7 +21,7 @@ pub mod gorbagana_game {
         game_wager.wager_amount = wager_amount;
         game_wager.is_claimed = false;
         game_wager.game_started_at = 0; // Not started yet
-        game_wager.bump = *ctx.bumps.get("game_wager").unwrap();
+        game_wager.bump = ctx.bumps.game_wager;
 
         // Transfer wager to PDA
         let ix = anchor_lang::solana_program::system_instruction::transfer(
@@ -40,7 +40,7 @@ pub mod gorbagana_game {
         Ok(())
     }
 
-    pub fn join_wager(ctx: Context<JoinWager>, room_id: String) -> Result<()> {
+    pub fn join_wager(ctx: Context<JoinWager>, _room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         game_wager.player_two = ctx.accounts.player_two.key();
         game_wager.game_started_at = Clock::get()?.unix_timestamp;
@@ -62,7 +62,7 @@ pub mod gorbagana_game {
         Ok(())
     }
 
-    pub fn claim_wager(ctx: Context<ClaimWager>, room_id: String) -> Result<()> {
+    pub fn claim_wager(ctx: Context<ClaimWager>, _room_id: String) -> Result<()> {
         let game_wager = &mut ctx.accounts.game_wager;
         require!(game_wager.is_claimed == false, GameError::AlreadyClaimed);
         
@@ -81,7 +81,7 @@ pub mod gorbagana_game {
         Ok(())
     }
 
-    pub fn cancel_wager(ctx: Context<CancelWager>, room_id: String) -> Result<()> {
+    pub fn cancel_wager(ctx: Context<CancelWager>, _room_id: String) -> Result<()> {
         let game_wager = &ctx.accounts.game_wager;
         
         // Requires server authority signature (enforced by #[account] constraints)
@@ -103,7 +103,7 @@ pub mod gorbagana_game {
     }
 
     // TODO: Implement finalize_game
-    pub fn finalize_game(ctx: Context<FinalizeGame>, wager_amount: u64) -> Result<()> {
+    pub fn finalize_game(_ctx: Context<FinalizeGame>, _wager_amount: u64) -> Result<()> {
         Ok(())
     }
 }
@@ -207,7 +207,7 @@ pub struct CancelWager<'info> {
 }
 
 #[derive(Accounts)]
-pub struct FinalizeGame<'info> {
+pub struct FinalizeGame {
     // TODO: Define accounts
 }
 
