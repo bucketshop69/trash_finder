@@ -31,6 +31,10 @@ export class SocketHandler {
         this.handleLeaveQueue(socket);
       });
 
+      socket.on('join_room', (data) => {
+        this.handleJoinRoom(socket, data);
+      });
+
       // Handle game actions
       socket.on('player_move', (data) => {
         this.handlePlayerMove(socket, data);
@@ -38,6 +42,10 @@ export class SocketHandler {
 
       socket.on('collect_key', (data) => {
         this.handleCollectKey(socket, data);
+      });
+
+      socket.on('claim_treasure', (data) => {
+        this.handleClaimTreasure(socket, data);
       });
 
       // Handle disconnection
@@ -81,6 +89,30 @@ export class SocketHandler {
     }
   }
 
+  private handleJoinRoom(socket: Socket, data: any) {
+    console.log(`🚪 Player ${socket.id} joining room ${data.roomId}:`, data);
+    const room = this.gameRooms.get(data.roomId);
+
+    if (room && !room.isFull()) {
+      const joined = room.addPlayer(socket.id, data.walletAddress);
+      if (joined) {
+        socket.join(room.id);
+        socket.emit('room_joined', {
+          roomId: room.id,
+          playerCount: room.getPlayerCount()
+        });
+
+        if (room.isFull()) {
+          room.startGame();
+        }
+      } else {
+        socket.emit('queue_error', { message: 'Failed to join room' });
+      }
+    } else {
+      socket.emit('queue_error', { message: 'Room not found or is full' });
+    }
+  }
+
   private handleLeaveQueue(socket: Socket) {
     console.log(`🚪 Player ${socket.id} leaving queue`);
     
@@ -113,6 +145,15 @@ export class SocketHandler {
     this.gameRooms.forEach((room) => {
       if (room.hasPlayer(socket.id)) {
         room.handleKeyCollection(socket.id, data);
+      }
+    });
+  }
+
+  private handleClaimTreasure(socket: Socket, data: any) {
+    // Find player's room and handle treasure claim
+    this.gameRooms.forEach((room) => {
+      if (room.hasPlayer(socket.id)) {
+        room.handleTreasureClaim(socket.id, data);
       }
     });
   }

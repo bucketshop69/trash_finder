@@ -72,6 +72,9 @@ Client (Phaser.js) ↔ Socket.io ↔ Game Server ↔ Gorbagana Testnet
 - `npm run build` - Build production version
 - `npm run test` - Run tests
 
+## Design References
+- **Maze Layout System**: See `/docs/maze-design.md` for detailed maze structure, room layouts, mirror perspective system, and technical specifications
+
 ## Game Mechanics
 - Players spawn at opposite ends of the maze
 - Navigate through puzzle rooms to find keys

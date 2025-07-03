@@ -3,6 +3,7 @@ export interface Key {
   position: { x: number; y: number };
   collected: boolean;
   roomId: string;
+  unlocksDoorsIds: string[];
 }
 
 export interface Room {
@@ -12,12 +13,23 @@ export interface Room {
   isLit: boolean;
   hasKey: boolean;
   keyId?: string;
+  playerOccupancy: string[];
+}
+
+export interface Treasure {
+  id: string;
+  position: { x: number; y: number };
+  roomId: string;
+  keysRequired: number;
+  claimed: boolean;
+  claimedBy?: string;
 }
 
 export class GameState {
   private startTime: Date | null = null;
   private keys: Map<string, Key> = new Map();
   private rooms: Map<string, Room> = new Map();
+  private treasure!: Treasure; // Will be initialized in initializeLevel
   private requiredKeys: number = 3;
   private gameStarted: boolean = false;
 
@@ -56,17 +68,20 @@ export class GameState {
   public collectKey(keyId: string): boolean {
     const key = this.keys.get(keyId);
     if (!key || key.collected) {
+      console.log(`⚠️ Key ${keyId} already collected or doesn't exist`);
       return false;
     }
 
+    // Atomic operation - mark as collected immediately to prevent race conditions
     key.collected = true;
     
-    // Turn off lights in the room where key was collected
+    // Turn off lights in the room where key was collected (optional lighting effect)
     const room = this.rooms.get(key.roomId);
     if (room) {
       room.isLit = false;
     }
 
+    console.log(`🔒 Key ${keyId} successfully marked as collected (server authority)`);
     return true;
   }
 
@@ -79,10 +94,48 @@ export class GameState {
     return Math.floor((Date.now() - this.startTime.getTime()) / 1000);
   }
 
+  public canClaimTreasure(playerId: string, playerPosition: { x: number; y: number }, playerKeys: number): boolean {
+    if (!this.treasure || this.treasure.claimed) {
+      return false;
+    }
+
+    // Check if player has enough keys
+    if (playerKeys < this.treasure.keysRequired) {
+      return false;
+    }
+
+    // Check if player is close enough to treasure
+    const distance = Math.sqrt(
+      Math.pow(playerPosition.x - this.treasure.position.x, 2) +
+      Math.pow(playerPosition.y - this.treasure.position.y, 2)
+    );
+
+    return distance < 50; // 50 pixel radius for treasure interaction
+  }
+
+  public claimTreasure(playerId: string): boolean {
+    if (!this.treasure || this.treasure.claimed) {
+      console.log(`⚠️ Treasure already claimed or doesn't exist`);
+      return false;
+    }
+
+    // Atomic operation - mark as claimed immediately to prevent race conditions
+    this.treasure.claimed = true;
+    this.treasure.claimedBy = playerId;
+    
+    console.log(`🏆 Treasure successfully claimed by ${playerId} (server authority)`);
+    return true;
+  }
+
+  public getTreasure(): Treasure | undefined {
+    return this.treasure;
+  }
+
   public getPublicState(): any {
     return {
       keys: Array.from(this.keys.values()),
       rooms: Array.from(this.rooms.values()),
+      treasure: this.treasure,
       requiredKeys: this.requiredKeys,
       gameTime: this.getGameTime(),
       gameStarted: this.gameStarted
@@ -90,50 +143,66 @@ export class GameState {
   }
 
   private initializeLevel(): void {
-    // Create rooms layout (matching our ASCII design)
-    const roomConfigs = [
-      { id: 'room1', x: 50, y: 150, width: 150, height: 100, hasKey: true },
-      { id: 'room2', x: 250, y: 150, width: 150, height: 100, hasKey: false },
-      { id: 'room3', x: 800, y: 150, width: 150, height: 100, hasKey: false },
-      { id: 'room4', x: 1000, y: 150, width: 150, height: 100, hasKey: true },
-      { id: 'room5', x: 50, y: 400, width: 150, height: 100, hasKey: false },
-      { id: 'room6', x: 250, y: 400, width: 150, height: 100, hasKey: true },
-      { id: 'room7', x: 800, y: 400, width: 150, height: 100, hasKey: true },
-      { id: 'room8', x: 1000, y: 400, width: 150, height: 100, hasKey: false },
-      { id: 'center', x: 525, y: 600, width: 150, height: 100, hasKey: false } // Treasure room
-    ];
+    // Create 3x3 grid layout (matching client MazeGenerator)
+    const rows = 3;
+    const cols = 3;
+    const roomWidth = 200;
+    const roomHeight = 150;
+    const offsetX = 100; // Starting position
+    const offsetY = 100;
 
-    // Create rooms
-    roomConfigs.forEach(config => {
-      const room: Room = {
-        id: config.id,
-        position: { x: config.x, y: config.y },
-        size: { width: config.width, height: config.height },
-        isLit: true,
-        hasKey: config.hasKey
-      };
+    // Create all 9 rooms in 3x3 grid
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const roomId = `room_${row}_${col}`;
+        const x = col * roomWidth + offsetX;
+        const y = row * roomHeight + offsetY;
 
-      // Create key if room has one
-      if (config.hasKey) {
-        const keyId = `key_${config.id}`;
+        const room: Room = {
+          id: roomId,
+          position: { x, y },
+          size: { width: roomWidth, height: roomHeight },
+          isLit: true,
+          hasKey: true, // Every room has a key for now (matches client)
+          playerOccupancy: []
+        };
+
+        // Create key for each room (matching client pattern)
+        const keyId = `key_${roomId}`;
         const key: Key = {
           id: keyId,
           position: {
-            x: config.x + config.width / 2,
-            y: config.y + config.height / 2
+            x: x + roomWidth / 2,   // Center of room
+            y: y + roomHeight / 2
           },
           collected: false,
-          roomId: config.id
+          roomId: roomId,
+          unlocksDoorsIds: []
         };
 
         this.keys.set(keyId, key);
         room.keyId = keyId;
+        this.rooms.set(roomId, room);
       }
+    }
 
-      this.rooms.set(config.id, room);
-    });
+    // Create treasure in center room (room_1_1)
+    const centerRoom = this.rooms.get('room_1_1');
+    if (centerRoom) {
+      this.treasure = {
+        id: 'center_treasure',
+        position: {
+          x: centerRoom.position.x + centerRoom.size.width / 2,
+          y: centerRoom.position.y + centerRoom.size.height / 2
+        },
+        roomId: 'room_1_1',
+        keysRequired: this.requiredKeys,
+        claimed: false
+      };
+    }
 
-    console.log(`🗝️ Initialized ${this.keys.size} keys in ${this.rooms.size} rooms`);
+    console.log(`🗝️ Initialized ${this.keys.size} keys in ${this.rooms.size} rooms (3x3 grid)`);
+    console.log(`💎 Treasure placed in center room: ${this.treasure?.roomId}`);
   }
 
   private updateRoomLighting(): void {
