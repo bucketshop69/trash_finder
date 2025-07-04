@@ -202,8 +202,8 @@ export class GameState {
       TrashType.FISH_BONES, TrashType.GLASS_BOTTLE, TrashType.MILK_CARTON
     ];
     
-    // Use same room selection as client: distribute across grid
-    const selectedRooms = ['room_0_0', 'room_0_1', 'room_0_2', 'room_1_0', 'room_1_1', 'room_1_2'];
+    // Use same room selection as client: distribute across grid (excluding center room_1_1)
+    const selectedRooms = ['room_0_0', 'room_0_1', 'room_0_2', 'room_1_0', 'room_1_2', 'room_2_0'];
     
     for (let i = 0; i < 6; i++) {
       const roomId = selectedRooms[i];
