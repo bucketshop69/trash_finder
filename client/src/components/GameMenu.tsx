@@ -11,7 +11,7 @@ const GameMenu = ({ onStartGame }: GameMenuProps) => {
             🗑️ Gorbagana Trash Finder
           </h1>
           <p className="text-xl text-gray-300">
-            Navigate the maze • Collect keys • Claim the treasure
+            Use WASD for navigation • Press space for trash picking
           </p>
         </div>
         
@@ -20,8 +20,8 @@ const GameMenu = ({ onStartGame }: GameMenuProps) => {
             <h3 className="text-lg font-semibold mb-2">How to Play:</h3>
             <ul className="text-left space-y-2 text-gray-300">
               <li>• Race against your opponent through puzzle rooms</li>
-              <li>• Collect keys to unlock the center treasure room</li>
-              <li>• Navigate in the dark when lights go out</li>
+              <li>• Collect 3 trash items scattered across the maze</li>
+              <li>• Navigate to center trash bin and press space to win</li>
               <li>• First to claim the Gorbagana treasure wins!</li>
             </ul>
           </div>

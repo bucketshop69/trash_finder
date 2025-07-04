@@ -16,14 +16,16 @@ export class MazeGenerator {
     };
   }
 
-  public generate(config: MazeConfig): MazeData {
+  public generate(config: MazeConfig, isNetworked: boolean = false): MazeData {
     // Use config to generate dynamic maze data
     const rooms = this.createRoomsFromConfig(config);
     const doors = this.createDoorsFromConfig(config, rooms);
-    const trash = this.createTrashFromConfig(config, rooms);
+    // In networked mode, don't generate trash - wait for server data
+    const trash = isNetworked ? [] : this.createTrashFromConfig(config, rooms);
     const objects = this.createObjectsFromConfig(config, rooms);
     const treasure = this.createTreasureFromConfig(config, rooms);
 
+    console.log(`🎮 Generated maze: networked=${isNetworked}, trash=${trash.length}`);
     return { rooms, doors, trash, objects, treasure };
   }
 
@@ -103,20 +105,26 @@ export class MazeGenerator {
       TrashType.FISH_BONES, TrashType.GLASS_BOTTLE, TrashType.MILK_CARTON
     ];
     
-    // Generate 6 trash items across the 3x3 grid (matching server logic)
+    // Use same room selection as server: distribute across grid (excluding center room_1_1)
+    const selectedRooms = ['room_0_0', 'room_0_1', 'room_0_2', 'room_1_0', 'room_1_2', 'room_2_0'];
+    
+    // Generate 6 trash items in selected rooms (matching server logic)
     for (let i = 0; i < 6; i++) {
-      const row = Math.floor(i / 3);
-      const col = i % 3;
-      const roomId = `room_${row}_${col}`;
+      const roomId = selectedRooms[i];
       const trashType = availableTrashTypes[i];
       const trashId = `trash_${trashType}_${roomId}`;
+      
+      // Parse room coordinates from roomId
+      const [, rowStr, colStr] = roomId.split('_');
+      const row = parseInt(rowStr);
+      const col = parseInt(colStr);
       
       // Calculate room position
       const roomX = col * 200 + 100; // Room width = 200, offset = 100
       const roomY = row * 150 + 100; // Room height = 150, offset = 100
       
-      // Generate position within room bounds (similar to server)
-      const margin = 30;
+      // Generate random position within room bounds (avoid walls/objects)
+      const margin = 40;
       const x = roomX + margin + Math.random() * (200 - 2 * margin);
       const y = roomY + margin + Math.random() * (150 - 2 * margin);
       
@@ -129,7 +137,7 @@ export class MazeGenerator {
       };
 
       trashItems.push(trash);
-      console.log(`🗑️ Generated trash: ${trashId} at (${x.toFixed(1)}, ${y.toFixed(1)})`);
+      console.log(`🗑️ Generated trash: ${trashId} at (${x.toFixed(1)}, ${y.toFixed(1)}) [excluding center room]`);
     }
     
     return trashItems;
@@ -375,8 +383,19 @@ export class MazeGenerator {
   private createObjectsFromConfig(config: MazeConfig, rooms: RoomState[]): RoomObject[] {
     const objects: RoomObject[] = [];
     
+    // Calculate center room ID to exclude from object generation
+    const centerRow = Math.floor(config.rows / 2);
+    const centerCol = Math.floor(config.cols / 2);
+    const centerRoomId = `room_${centerRow}_${centerCol}`;
+    
     rooms.forEach(room => {
-      // Add furniture and wall objects to each room
+      // Skip object generation for center room to keep treasure visible
+      if (room.id === centerRoomId) {
+        console.log(`🏛️ Skipping object generation for center room: ${room.id}`);
+        return;
+      }
+      
+      // Add furniture and wall objects to non-center rooms
       objects.push(...this.generateBasicFurniture(room.id));
       objects.push(...this.generateWallObjects(room.id));
       

@@ -95,8 +95,11 @@ export class MazeScene extends Phaser.Scene {
       roomHeight: 150
     };
 
+    // Check if we're in networked mode
+    const isNetworked = socketManager.getConnectionStatus() && socketManager.getRoomId() !== null;
+
     // Generate maze data using new method
-    const mazeData: MazeData = this.mazeGenerator.generate(mazeConfig);
+    const mazeData: MazeData = this.mazeGenerator.generate(mazeConfig, isNetworked);
 
     this.rooms = mazeData.rooms;
     this.doors = mazeData.doors;
@@ -127,6 +130,13 @@ export class MazeScene extends Phaser.Scene {
     this.add.text(400, 20, 'Gorbagana Trash Finder - Multiplayer Maze', {
       fontSize: '24px',
       color: '#ffffff',
+      fontFamily: 'Arial'
+    }).setOrigin(0.5);
+
+    // Add instructions
+    this.add.text(400, 45, 'WASD for navigation • Press space for trash picking', {
+      fontSize: '12px',
+      color: '#cccccc',
       fontFamily: 'Arial'
     }).setOrigin(0.5);
 
@@ -2256,7 +2266,20 @@ export class MazeScene extends Phaser.Scene {
     // Handle server-authoritative game state updates
     // console.log('🎮 Game state update received:', data); // DISABLED - was causing infinite loop
 
-    // TODO: Update keys, treasure state based on server authority
+    // Update trash data from server if we're in networked mode and don't have trash yet
+    if (data.gameState && data.gameState.trash && this.trash.length === 0) {
+      console.log('🗑️ Received server trash data:', data.gameState.trash.length, 'items');
+      this.updateTrashFromServer(data.gameState.trash);
+    }
+  }
+
+  private updateTrashFromServer(serverTrash: any[]): void {
+    // Replace client trash with server's authoritative trash data
+    this.trash = serverTrash;
+    console.log(`🗑️ Updated client trash from server:`, this.trash.map(t => t.id));
+
+    // Re-create trash sprites with server data
+    this.createTrash();
   }
 
   private handleRemoteTrashCollection(data: any): void {
